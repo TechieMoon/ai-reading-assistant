@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "description": "Korean AI reading assistant for understanding English text with context, structure, and learning feedback.",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "sidePanel", "activeTab", "tabs"],
-  "host_permissions": ["https://api.openai.com/*"],
+  "permissions": ["storage", "sidePanel", "activeTab", "tabs", "scripting"],
+  "host_permissions": ["<all_urls>", "https://api.openai.com/*"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"

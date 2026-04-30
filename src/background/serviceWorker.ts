@@ -47,6 +47,15 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
         }
       };
 
+    case MESSAGE_TYPES.ENSURE_CONTENT_SCRIPT:
+      return {
+        ok: true,
+        data: await ensureContentScript()
+      };
+
+    case MESSAGE_TYPES.CAPTURE_ACTIVE_SELECTION:
+      return captureActiveSelection();
+
     case MESSAGE_TYPES.EXPLAIN_SELECTION: {
       const explanation = await explainSelection(message.payload);
       return {
@@ -66,8 +75,105 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
   }
 }
 
-async function getActiveTab() {
+async function captureActiveSelection(): Promise<unknown> {
+  const tab = await getActiveTabWithId();
+  if (!tab?.id || !isInjectableUrl(tab.url ?? "")) {
+    return {
+      ok: false,
+      error: {
+        code: "unknown",
+        message: "현재 페이지에서는 선택한 텍스트를 직접 가져올 수 없습니다. 텍스트를 복사해 붙여넣어 주세요."
+      }
+    };
+  }
+
+  await injectContentScript(tab.id);
+
+  let response: { ok: boolean; data?: { selection: SelectionPayload | null }; error?: { message: string } };
+  try {
+    response = (await chrome.tabs.sendMessage(tab.id, {
+      type: "ai-reading-assistant/request-selection-capture"
+    })) as { ok: boolean; data?: { selection: SelectionPayload | null }; error?: { message: string } };
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: "unknown",
+        message: "현재 탭에 선택 감지 스크립트를 연결하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."
+      }
+    };
+  }
+
+  const selection = response.data?.selection ?? null;
+  if (!response.ok || !selection) {
+    return {
+      ok: false,
+      error: {
+        code: "unknown",
+        message: response.error?.message ?? "현재 탭에서 선택된 텍스트를 찾지 못했습니다."
+      }
+    };
+  }
+
+  latestSelection = selection;
+  await persistLatestSelection(selection);
+  notifySidePanel(selection);
+
+  return {
+    ok: true,
+    data: {
+      selection
+    }
+  };
+}
+
+async function ensureContentScript() {
+  const tab = await getActiveTabWithId();
+  if (!tab?.id) {
+    return {
+      injected: false,
+      reason: "활성 탭을 찾지 못했습니다."
+    };
+  }
+
+  if (!isInjectableUrl(tab.url ?? "")) {
+    return {
+      injected: false,
+      reason: "Chrome 내부 페이지나 PDF 뷰어처럼 확장 프로그램이 접근할 수 없는 페이지입니다."
+    };
+  }
+
+  const injected = await injectContentScript(tab.id);
+  return injected
+    ? {
+        injected: true
+      }
+    : {
+        injected: false,
+        reason: "현재 탭에 선택 감지 스크립트를 주입하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."
+      };
+}
+
+async function injectContentScript(tabId: number): Promise<boolean> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["assets/content.js"]
+    });
+    return true;
+  } catch {
+    // Static content scripts still cover normal newly loaded pages. This path is best-effort for already-open tabs.
+    return false;
+  }
+}
+
+async function getActiveTabWithId(): Promise<chrome.tabs.Tab | null> {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tab ?? null;
+}
+
+async function getActiveTab() {
+  const tab = await getActiveTabWithId();
 
   if (!tab) {
     return null;
@@ -77,6 +183,14 @@ async function getActiveTab() {
     title: tab.title ?? "",
     url: tab.url ?? ""
   };
+}
+
+function isInjectableUrl(url: string): boolean {
+  if (!url) {
+    return false;
+  }
+
+  return /^(https?|file):/i.test(url);
 }
 
 async function persistLatestSelection(selection: SelectionPayload): Promise<void> {

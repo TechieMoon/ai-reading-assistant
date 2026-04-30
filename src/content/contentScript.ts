@@ -10,10 +10,28 @@ interface SelectionPayload {
   createdAt: string;
 }
 
+interface SelectionReadResult {
+  payload: SelectionPayload;
+  rect: DOMRect | null;
+}
+
+(() => {
+const CONTENT_SCRIPT_LOADED_KEY = "__aiReadingAssistantContentScriptLoaded";
 const MESSAGE_SELECTION_SUBMITTED = "ai-reading-assistant/selection-submitted";
+const MESSAGE_REQUEST_SELECTION_CAPTURE = "ai-reading-assistant/request-selection-capture";
 const BUTTON_ID = "ai-reading-assistant-floating-button";
 const MAX_SELECTED_TEXT_LENGTH = 4000;
 const MAX_CONTEXT_LENGTH = 9000;
+
+const globalWindow = window as Window & {
+  [CONTENT_SCRIPT_LOADED_KEY]?: boolean;
+};
+
+if (globalWindow[CONTENT_SCRIPT_LOADED_KEY]) {
+  return;
+}
+
+globalWindow[CONTENT_SCRIPT_LOADED_KEY] = true;
 
 let floatingButton: HTMLButtonElement | null = null;
 let activePayload: SelectionPayload | null = null;
@@ -23,6 +41,36 @@ document.addEventListener("selectionchange", () => scheduleSelectionUpdate(120))
 document.addEventListener("mouseup", () => scheduleSelectionUpdate(40), true);
 document.addEventListener("touchend", () => scheduleSelectionUpdate(80), true);
 document.addEventListener("keyup", () => scheduleSelectionUpdate(40), true);
+chrome.runtime.onMessage.addListener((message: { type?: string }, _sender, sendResponse) => {
+  if (message.type !== MESSAGE_REQUEST_SELECTION_CAPTURE) {
+    return;
+  }
+
+  const result = readCurrentSelection();
+  if (!result) {
+    hideButton();
+    sendResponse({
+      ok: false,
+      error: {
+        message: "현재 탭에서 선택된 영어 텍스트를 찾지 못했습니다. 텍스트를 드래그한 뒤 다시 시도해 주세요."
+      }
+    });
+    return;
+  }
+
+  activePayload = result.payload;
+  if (result.rect) {
+    showButton(result.rect, labelForSelectionKind(result.payload.selectionKind));
+  }
+
+  sendResponse({
+    ok: true,
+    data: {
+      selection: result.payload
+    }
+  });
+});
+scheduleSelectionUpdate(0);
 
 function scheduleSelectionUpdate(delay: number): void {
   window.clearTimeout(selectionTimer);
@@ -47,37 +95,43 @@ document.addEventListener(
 );
 
 function updateSelectionButton(): void {
-  const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+  const result = readCurrentSelection();
+  if (!result?.rect) {
     hideButton();
     return;
+  }
+
+  activePayload = result.payload;
+  showButton(result.rect, labelForSelectionKind(result.payload.selectionKind));
+}
+
+function readCurrentSelection(): SelectionReadResult | null {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+    return null;
   }
 
   const selectedText = normalizeWhitespace(selection.toString());
   if (!isUsableSelection(selectedText)) {
-    hideButton();
-    return;
+    return null;
   }
 
   const range = selection.getRangeAt(0);
   const rect = getSelectionRect(range);
-  if (!rect) {
-    hideButton();
-    return;
-  }
-
   const selectionKind = classifySelection(selectedText);
-  activePayload = {
-    id: createSelectionId(),
-    selectedText: truncate(selectedText, MAX_SELECTED_TEXT_LENGTH),
-    surroundingContext: truncate(extractSurroundingContext(range, selectedText), MAX_CONTEXT_LENGTH),
-    selectionKind,
-    pageTitle: document.title,
-    pageUrl: location.href,
-    createdAt: new Date().toISOString()
-  };
 
-  showButton(rect, labelForSelectionKind(selectionKind));
+  return {
+    rect,
+    payload: {
+      id: createSelectionId(),
+      selectedText: truncate(selectedText, MAX_SELECTED_TEXT_LENGTH),
+      surroundingContext: truncate(extractSurroundingContext(range, selectedText), MAX_CONTEXT_LENGTH),
+      selectionKind,
+      pageTitle: document.title,
+      pageUrl: location.href,
+      createdAt: new Date().toISOString()
+    }
+  };
 }
 
 function showButton(rect: DOMRect, label: string): void {
@@ -268,3 +322,4 @@ function createSelectionId(): string {
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+})();

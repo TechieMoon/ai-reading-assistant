@@ -175,6 +175,21 @@ h2 {
   gap: 8px;
 }
 
+.capture-selection-button {
+  min-height: 38px;
+  border: 1px solid #0f766e;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #0f766e;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.capture-selection-button:hover {
+  background: #e8f4f1;
+}
+
 .manual-form label {
   color: #303b4c;
   font-size: 13px;

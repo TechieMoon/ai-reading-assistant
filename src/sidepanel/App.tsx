@@ -1,5 +1,11 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { MESSAGE_TYPES, type ActiveTabResponse, type LatestSelectionResponse, type RuntimeMessage } from "../shared/messages";
+import {
+  MESSAGE_TYPES,
+  type ActiveTabResponse,
+  type EnsureContentScriptResponse,
+  type LatestSelectionResponse,
+  type RuntimeMessage
+} from "../shared/messages";
 import { getSettings, saveReadingMode } from "../shared/storage";
 import type { ActiveTabInfo, ApiResponse, ExplanationResponse, ReadingMode, SelectionPayload } from "../shared/types";
 
@@ -19,6 +25,7 @@ export function App() {
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTabInfo | null>(null);
   const [manualText, setManualText] = useState("");
+  const [contentScriptNotice, setContentScriptNotice] = useState<string | null>(null);
   const modeRef = useRef<ReadingMode>("article");
   const requestIdRef = useRef(0);
 
@@ -57,9 +64,12 @@ export function App() {
     let mounted = true;
 
     async function initialize() {
-      const [settings, activeTabResponse] = await Promise.all([
+      const [settings, activeTabResponse, ensureResponse] = await Promise.all([
         getSettings(),
-        chrome.runtime.sendMessage({ type: MESSAGE_TYPES.GET_ACTIVE_TAB }) as Promise<ApiResponse<ActiveTabResponse>>
+        chrome.runtime.sendMessage({ type: MESSAGE_TYPES.GET_ACTIVE_TAB }) as Promise<ApiResponse<ActiveTabResponse>>,
+        chrome.runtime.sendMessage({ type: MESSAGE_TYPES.ENSURE_CONTENT_SCRIPT }) as Promise<
+          ApiResponse<EnsureContentScriptResponse>
+        >
       ]);
       const initialMode = settings.mode ?? "article";
 
@@ -71,6 +81,21 @@ export function App() {
       modeRef.current = initialMode;
       if (activeTabResponse.ok) {
         setActiveTab(activeTabResponse.data.tab);
+      }
+      if (ensureResponse.ok && !ensureResponse.data.injected) {
+        setContentScriptNotice(ensureResponse.data.reason ?? "현재 페이지에는 선택 감지 스크립트를 주입하지 못했습니다.");
+      }
+
+      if (ensureResponse.ok && ensureResponse.data.injected) {
+        const captureResponse = (await chrome.runtime.sendMessage({
+          type: MESSAGE_TYPES.CAPTURE_ACTIVE_SELECTION
+        })) as ApiResponse<LatestSelectionResponse>;
+
+        if (mounted && captureResponse.ok && captureResponse.data.selection) {
+          setSelection(captureResponse.data.selection);
+          void explain(captureResponse.data.selection, initialMode);
+          return;
+        }
       }
 
       const response = (await chrome.runtime.sendMessage({
@@ -119,6 +144,24 @@ export function App() {
     if (selection) {
       void explain(selection, mode);
     }
+  }
+
+  async function captureCurrentSelection() {
+    const response = (await chrome.runtime.sendMessage({
+      type: MESSAGE_TYPES.CAPTURE_ACTIVE_SELECTION
+    })) as ApiResponse<LatestSelectionResponse>;
+
+    if (!response.ok || !response.data.selection) {
+      setLoadState("error");
+      setExplanation(null);
+      setErrorMessage(response.ok ? "현재 탭에서 선택된 텍스트를 찾지 못했습니다." : response.error.message);
+      setNeedsApiKey(false);
+      return;
+    }
+
+    setSelection(response.data.selection);
+    setExplanation(null);
+    void explain(response.data.selection, mode);
   }
 
   function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
@@ -178,6 +221,10 @@ export function App() {
         <section className="empty-state">
           <h2>선택된 텍스트 없음</h2>
           {tabNotice && <p className="notice-text">{tabNotice}</p>}
+          {contentScriptNotice && <p className="notice-text">{contentScriptNotice}</p>}
+          <button className="capture-selection-button" type="button" onClick={() => void captureCurrentSelection()}>
+            현재 선택 가져오기
+          </button>
           <form className="manual-form" onSubmit={handleManualSubmit}>
             <label htmlFor="manual-selection">선택한 텍스트 붙여넣기</label>
             <textarea
