@@ -51,8 +51,15 @@ npm run build
 ## PDF 지원
 
 MVP는 일반 웹페이지에서 선택한 텍스트를 지원합니다. Chrome 내장 PDF 뷰어는 텍스트 선택과 content script 동작에
-제약이 있을 수 있습니다. 이후 PDF.js 기반 PDF 읽기 모드를 추가할 수 있도록 기능을 content script, side panel,
-background service worker로 분리했습니다.
+제약이 있을 수 있습니다. 특히 `file://`로 열린 로컬 PDF는 확장 프로그램이 드래그 선택을 직접 읽지 못할 수
+있습니다.
+
+PDF에서 플로팅 버튼이 나타나지 않으면 선택한 문장을 복사한 뒤 Side Panel의 "선택한 텍스트 붙여넣기" 입력칸에
+붙여넣어 설명을 받을 수 있습니다. 로컬 HTML 파일에서 사용하려면 Chrome 확장 프로그램 상세 화면에서 "파일 URL에
+대한 액세스 허용"을 켜야 할 수 있습니다.
+
+이후 PDF.js 기반 PDF 읽기 모드를 추가할 수 있도록 기능을 content script, side panel, background service worker로
+분리했습니다.
 
 ## 향후 계획
 

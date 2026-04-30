@@ -39,6 +39,14 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
         }
       };
 
+    case MESSAGE_TYPES.GET_ACTIVE_TAB:
+      return {
+        ok: true,
+        data: {
+          tab: await getActiveTab()
+        }
+      };
+
     case MESSAGE_TYPES.EXPLAIN_SELECTION: {
       const explanation = await explainSelection(message.payload);
       return {
@@ -56,6 +64,19 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
         }
       };
   }
+}
+
+async function getActiveTab() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+  if (!tab) {
+    return null;
+  }
+
+  return {
+    title: tab.title ?? "",
+    url: tab.url ?? ""
+  };
 }
 
 async function persistLatestSelection(selection: SelectionPayload): Promise<void> {

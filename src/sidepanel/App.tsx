@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { MESSAGE_TYPES, type LatestSelectionResponse, type RuntimeMessage } from "../shared/messages";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { MESSAGE_TYPES, type ActiveTabResponse, type LatestSelectionResponse, type RuntimeMessage } from "../shared/messages";
 import { getSettings, saveReadingMode } from "../shared/storage";
-import type { ApiResponse, ExplanationResponse, ReadingMode, SelectionPayload } from "../shared/types";
+import type { ActiveTabInfo, ApiResponse, ExplanationResponse, ReadingMode, SelectionPayload } from "../shared/types";
 
 type LoadState = "idle" | "loading" | "success" | "error";
 
@@ -17,6 +17,8 @@ export function App() {
   const [explanation, setExplanation] = useState<ExplanationResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [needsApiKey, setNeedsApiKey] = useState(false);
+  const [activeTab, setActiveTab] = useState<ActiveTabInfo | null>(null);
+  const [manualText, setManualText] = useState("");
   const modeRef = useRef<ReadingMode>("article");
   const requestIdRef = useRef(0);
 
@@ -55,7 +57,10 @@ export function App() {
     let mounted = true;
 
     async function initialize() {
-      const settings = await getSettings();
+      const [settings, activeTabResponse] = await Promise.all([
+        getSettings(),
+        chrome.runtime.sendMessage({ type: MESSAGE_TYPES.GET_ACTIVE_TAB }) as Promise<ApiResponse<ActiveTabResponse>>
+      ]);
       const initialMode = settings.mode ?? "article";
 
       if (!mounted) {
@@ -64,6 +69,9 @@ export function App() {
 
       setMode(initialMode);
       modeRef.current = initialMode;
+      if (activeTabResponse.ok) {
+        setActiveTab(activeTabResponse.data.tab);
+      }
 
       const response = (await chrome.runtime.sendMessage({
         type: MESSAGE_TYPES.GET_LATEST_SELECTION
@@ -113,9 +121,25 @@ export function App() {
     }
   }
 
+  function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const selectedText = manualText.trim();
+
+    if (!selectedText) {
+      return;
+    }
+
+    const manualSelection = createManualSelection(selectedText, activeTab);
+    setSelection(manualSelection);
+    setExplanation(null);
+    void explain(manualSelection, mode);
+  }
+
   function openOptions() {
     void chrome.runtime.openOptionsPage();
   }
+
+  const tabNotice = getTabNotice(activeTab);
 
   return (
     <main className="app-shell">
@@ -146,13 +170,26 @@ export function App() {
         <section className="selection-panel">
           <div className="selection-meta">
             <span>{labelForSelection(selection.selectionKind)}</span>
-            <span>{new URL(selection.pageUrl).hostname}</span>
+            <span>{hostLabel(selection.pageUrl)}</span>
           </div>
           <p>{selection.selectedText}</p>
         </section>
       ) : (
         <section className="empty-state">
           <h2>선택된 텍스트 없음</h2>
+          {tabNotice && <p className="notice-text">{tabNotice}</p>}
+          <form className="manual-form" onSubmit={handleManualSubmit}>
+            <label htmlFor="manual-selection">선택한 텍스트 붙여넣기</label>
+            <textarea
+              id="manual-selection"
+              value={manualText}
+              onChange={(event) => setManualText(event.target.value)}
+              rows={5}
+            />
+            <button type="submit" disabled={!manualText.trim()}>
+              문장 분석
+            </button>
+          </form>
         </section>
       )}
 
@@ -211,4 +248,72 @@ function labelForSelection(kind: SelectionPayload["selectionKind"]): string {
   }
 
   return "문장 분석";
+}
+
+function createManualSelection(selectedText: string, activeTab: ActiveTabInfo | null): SelectionPayload {
+  return {
+    id: createId(),
+    selectedText,
+    surroundingContext: selectedText,
+    selectionKind: classifySelection(selectedText),
+    pageTitle: activeTab?.title ?? "",
+    pageUrl: activeTab?.url ?? "",
+    createdAt: new Date().toISOString()
+  };
+}
+
+function classifySelection(text: string): SelectionPayload["selectionKind"] {
+  const words = text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g) ?? [];
+  const hasSentencePunctuation = /[.!?;:]/.test(text);
+
+  if (words.length === 1 && /^[A-Za-z]+(?:[-'][A-Za-z]+)?$/.test(text)) {
+    return "word";
+  }
+
+  if (words.length <= 6 && !hasSentencePunctuation) {
+    return "phrase";
+  }
+
+  return "sentence";
+}
+
+function createId(): string {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function hostLabel(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.protocol === "file:") {
+      return "로컬 파일";
+    }
+
+    return parsedUrl.hostname || "현재 탭";
+  } catch {
+    return "현재 탭";
+  }
+}
+
+function getTabNotice(activeTab: ActiveTabInfo | null): string | null {
+  const url = activeTab?.url.toLowerCase() ?? "";
+  const isPdf = url.split(/[?#]/)[0].endsWith(".pdf");
+  const isFile = url.startsWith("file://");
+
+  if (isPdf && isFile) {
+    return "현재 탭은 로컬 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. 선택한 문장을 복사해서 아래에 붙여넣어 주세요. 로컬 HTML 파일은 확장 프로그램 상세 화면에서 파일 URL 접근 허용이 필요합니다.";
+  }
+
+  if (isPdf) {
+    return "현재 탭은 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. 선택한 문장을 복사해서 아래에 붙여넣어 주세요.";
+  }
+
+  if (isFile) {
+    return "현재 탭은 로컬 파일입니다. 드래그 선택이 동작하지 않으면 확장 프로그램 상세 화면에서 파일 URL 접근 허용을 켜 주세요.";
+  }
+
+  return null;
 }

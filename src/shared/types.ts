@@ -27,6 +27,11 @@ export interface AppSettings {
   mode?: ReadingMode;
 }
 
+export interface ActiveTabInfo {
+  title: string;
+  url: string;
+}
+
 export interface AppErrorPayload {
   code: "missing_api_key" | "openai_error" | "network_error" | "unknown";
   message: string;

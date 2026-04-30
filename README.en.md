@@ -52,8 +52,14 @@ This MVP is a BYOK prototype. It does not include a backend server.
 ## PDF Support
 
 The MVP supports selected text on normal webpages. Chrome's built-in PDF viewer can limit text selection and content
-script behavior. The code is split into content script, side panel, and background service worker modules so PDF.js
-support can be added later.
+script behavior. This is especially common for local PDFs opened through `file://`.
+
+If the floating button does not appear in a PDF, copy the selected text and paste it into the "선택한 텍스트 붙여넣기"
+field in the Side Panel. For local HTML files, Chrome may also require enabling "Allow access to file URLs" on the
+extension details page.
+
+The code is split into content script, side panel, and background service worker modules so PDF.js support can be added
+later.
 
 ## Roadmap
 

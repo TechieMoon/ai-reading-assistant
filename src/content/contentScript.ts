@@ -19,10 +19,15 @@ let floatingButton: HTMLButtonElement | null = null;
 let activePayload: SelectionPayload | null = null;
 let selectionTimer: number | undefined;
 
-document.addEventListener("selectionchange", () => {
+document.addEventListener("selectionchange", () => scheduleSelectionUpdate(120));
+document.addEventListener("mouseup", () => scheduleSelectionUpdate(40), true);
+document.addEventListener("touchend", () => scheduleSelectionUpdate(80), true);
+document.addEventListener("keyup", () => scheduleSelectionUpdate(40), true);
+
+function scheduleSelectionUpdate(delay: number): void {
   window.clearTimeout(selectionTimer);
-  selectionTimer = window.setTimeout(updateSelectionButton, 120);
-});
+  selectionTimer = window.setTimeout(updateSelectionButton, delay);
+}
 
 document.addEventListener(
   "pointerdown",
@@ -79,8 +84,8 @@ function showButton(rect: DOMRect, label: string): void {
   const button = ensureButton();
   button.textContent = label;
 
-  const top = Math.max(8, rect.top + window.scrollY - 42);
-  const left = clamp(rect.left + window.scrollX + rect.width / 2 - 42, 8, window.scrollX + document.documentElement.clientWidth - 108);
+  const top = Math.max(8, rect.top - 42);
+  const left = clamp(rect.left + rect.width / 2 - 42, 8, document.documentElement.clientWidth - 108);
 
   button.style.top = `${top}px`;
   button.style.left = `${left}px`;
@@ -99,7 +104,7 @@ function ensureButton(): HTMLButtonElement {
   button.type = "button";
   button.setAttribute("aria-label", "AI Reading Assistant");
   Object.assign(button.style, {
-    position: "absolute",
+    position: "fixed",
     zIndex: "2147483647",
     border: "0",
     borderRadius: "999px",

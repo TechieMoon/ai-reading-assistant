@@ -151,8 +151,69 @@ h2 {
 }
 
 .empty-state {
-  padding: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.empty-state h2 {
   text-align: center;
+}
+
+.notice-text {
+  border-left: 4px solid #b45309;
+  background: #fff8eb;
+  color: #4f5b6b;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.manual-form {
+  display: grid;
+  gap: 8px;
+}
+
+.manual-form label {
+  color: #303b4c;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.manual-form textarea {
+  width: 100%;
+  min-height: 108px;
+  resize: vertical;
+  border: 1px solid #cbd5d1;
+  border-radius: 8px;
+  color: #172033;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  padding: 10px;
+}
+
+.manual-form textarea:focus {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
+  outline: none;
+}
+
+.manual-form button {
+  min-height: 38px;
+  border: 1px solid #12343b;
+  border-radius: 8px;
+  background: #12343b;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.manual-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .answer-panel {
