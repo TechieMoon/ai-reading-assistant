@@ -24,9 +24,10 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "AI Reading Assistant"
+    "default_title": "AI Reading Assistant",
+    "default_popup": "popup.html"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://api.openai.com"
+    "extension_pages": "script-src 'self'; object-src 'self'; worker-src 'self'; connect-src 'self' https://api.openai.com https://* http://* file:"
   }
 }

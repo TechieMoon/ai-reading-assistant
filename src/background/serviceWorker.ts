@@ -77,12 +77,12 @@ async function handleMessage(message: RuntimeMessage, sender: chrome.runtime.Mes
 
 async function captureActiveSelection(): Promise<unknown> {
   const tab = await getActiveTabWithId();
-  if (!tab?.id || !isInjectableUrl(tab.url ?? "")) {
+  if (!tab?.id || !isInjectableUrl(tab.url ?? "") || isBrowserPdfUrl(tab.url ?? "")) {
     return {
       ok: false,
       error: {
         code: "unknown",
-        message: "현재 페이지에서는 선택한 텍스트를 직접 가져올 수 없습니다. 텍스트를 복사해 붙여넣어 주세요."
+        message: "PDF는 확장 프로그램 팝업에서 AI Reader로 열어 분석해 주세요."
       }
     };
   }
@@ -136,10 +136,12 @@ async function ensureContentScript() {
     };
   }
 
-  if (!isInjectableUrl(tab.url ?? "")) {
+  if (!isInjectableUrl(tab.url ?? "") || isBrowserPdfUrl(tab.url ?? "")) {
     return {
       injected: false,
-      reason: "Chrome 내부 페이지나 PDF 뷰어처럼 확장 프로그램이 접근할 수 없는 페이지입니다."
+      reason: isBrowserPdfUrl(tab.url ?? "")
+        ? "PDF는 확장 프로그램 팝업에서 AI Reader로 열어 분석해 주세요."
+        : "Chrome 내부 페이지처럼 확장 프로그램이 접근할 수 없는 페이지입니다."
     };
   }
 
@@ -191,6 +193,18 @@ function isInjectableUrl(url: string): boolean {
   }
 
   return /^(https?|file):/i.test(url);
+}
+
+function isBrowserPdfUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const isChromePdfViewer =
+      parsed.protocol === "chrome-extension:" && parsed.hostname === "mhjfbmdgcfjbbpaeojofohoefgiehjai";
+
+    return isChromePdfViewer || parsed.pathname.toLowerCase().endsWith(".pdf");
+  } catch {
+    return false;
+  }
 }
 
 async function persistLatestSelection(selection: SelectionPayload): Promise<void> {

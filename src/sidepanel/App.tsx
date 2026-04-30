@@ -289,11 +289,11 @@ function getTabNotice(activeTab: ActiveTabInfo | null): string | null {
   const isFile = url.startsWith("file://");
 
   if (isPdf && isFile) {
-    return "현재 탭은 로컬 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. PDF 지원은 이후 PDF.js 기반 읽기 모드로 제공할 예정입니다.";
+    return "현재 탭은 로컬 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 안정적으로 분석할 수 없습니다. 확장 프로그램 팝업에서 PDF 열기를 눌러 AI Reader로 열어 주세요.";
   }
 
   if (isPdf) {
-    return "현재 탭은 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. PDF 지원은 이후 PDF.js 기반 읽기 모드로 제공할 예정입니다.";
+    return "현재 탭은 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 안정적으로 분석할 수 없습니다. 확장 프로그램 팝업에서 AI Reader로 열기를 사용해 주세요.";
   }
 
   if (isFile) {
