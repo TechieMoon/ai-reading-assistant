@@ -21,7 +21,8 @@ const MESSAGE_SELECTION_SUBMITTED = "ai-reading-assistant/selection-submitted";
 const MESSAGE_REQUEST_SELECTION_CAPTURE = "ai-reading-assistant/request-selection-capture";
 const BUTTON_ID = "ai-reading-assistant-floating-button";
 const MAX_SELECTED_TEXT_LENGTH = 4000;
-const MAX_CONTEXT_LENGTH = 9000;
+const MAX_CONTEXT_LENGTH = 4200;
+const CONTEXT_RADIUS_CHARS = 1800;
 
 const globalWindow = window as Window & {
   [CONTENT_SCRIPT_LOADED_KEY]?: boolean;
@@ -262,20 +263,28 @@ function labelForSelectionKind(kind: SelectionKind): string {
 
 function extractSurroundingContext(range: Range, selectedText: string): string {
   const block = findContextBlock(range.commonAncestorContainer);
-  const blockText = normalizeWhitespace(block?.textContent ?? "");
+  const rawBlockText = block?.textContent ?? "";
+  const blockText = normalizeWhitespace(rawBlockText);
 
-  if (blockText) {
-    const index = blockText.indexOf(selectedText);
-    if (index >= 0) {
-      const start = Math.max(0, index - 2500);
-      const end = Math.min(blockText.length, index + selectedText.length + 2500);
-      return blockText.slice(start, end);
-    }
-
-    return blockText;
+  if (!blockText) {
+    return selectedText;
   }
 
-  return normalizeWhitespace(document.body?.innerText ?? selectedText);
+  const rawStartOffset = getTextOffsetWithin(block, range.startContainer, range.startOffset);
+  if (rawStartOffset >= 0) {
+    const rawStart = Math.max(0, rawStartOffset - CONTEXT_RADIUS_CHARS);
+    const rawEnd = Math.min(rawBlockText.length, rawStartOffset + range.toString().length + CONTEXT_RADIUS_CHARS);
+    return truncate(normalizeWhitespace(rawBlockText.slice(rawStart, rawEnd)), MAX_CONTEXT_LENGTH);
+  }
+
+  const index = blockText.indexOf(selectedText);
+  if (index >= 0) {
+    const start = Math.max(0, index - CONTEXT_RADIUS_CHARS);
+    const end = Math.min(blockText.length, index + selectedText.length + CONTEXT_RADIUS_CHARS);
+    return truncate(blockText.slice(start, end), MAX_CONTEXT_LENGTH);
+  }
+
+  return truncate(blockText, MAX_CONTEXT_LENGTH);
 }
 
 function findContextBlock(node: Node): HTMLElement | null {
@@ -285,6 +294,28 @@ function findContextBlock(node: Node): HTMLElement | null {
       "article, main, section, p, li, blockquote, td, th, pre, code, h1, h2, h3, h4, h5, h6, div"
     ) ?? null
   );
+}
+
+function getTextOffsetWithin(root: HTMLElement | null, targetNode: Node, targetOffset: number): number {
+  if (!root) {
+    return -1;
+  }
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let currentOffset = 0;
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const textLength = currentNode.textContent?.length ?? 0;
+    if (currentNode === targetNode) {
+      return currentOffset + targetOffset;
+    }
+
+    currentOffset += textLength;
+    currentNode = walker.nextNode();
+  }
+
+  return -1;
 }
 
 function isUsableSelection(text: string): boolean {

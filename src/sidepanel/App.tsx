@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MESSAGE_TYPES,
   type ActiveTabResponse,
@@ -24,7 +24,6 @@ export function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [needsApiKey, setNeedsApiKey] = useState(false);
   const [activeTab, setActiveTab] = useState<ActiveTabInfo | null>(null);
-  const [manualText, setManualText] = useState("");
   const [contentScriptNotice, setContentScriptNotice] = useState<string | null>(null);
   const modeRef = useRef<ReadingMode>("article");
   const requestIdRef = useRef(0);
@@ -164,20 +163,6 @@ export function App() {
     void explain(response.data.selection, mode);
   }
 
-  function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const selectedText = manualText.trim();
-
-    if (!selectedText) {
-      return;
-    }
-
-    const manualSelection = createManualSelection(selectedText, activeTab);
-    setSelection(manualSelection);
-    setExplanation(null);
-    void explain(manualSelection, mode);
-  }
-
   function openOptions() {
     void chrome.runtime.openOptionsPage();
   }
@@ -225,18 +210,6 @@ export function App() {
           <button className="capture-selection-button" type="button" onClick={() => void captureCurrentSelection()}>
             현재 선택 가져오기
           </button>
-          <form className="manual-form" onSubmit={handleManualSubmit}>
-            <label htmlFor="manual-selection">선택한 텍스트 붙여넣기</label>
-            <textarea
-              id="manual-selection"
-              value={manualText}
-              onChange={(event) => setManualText(event.target.value)}
-              rows={5}
-            />
-            <button type="submit" disabled={!manualText.trim()}>
-              문장 분석
-            </button>
-          </form>
         </section>
       )}
 
@@ -297,41 +270,6 @@ function labelForSelection(kind: SelectionPayload["selectionKind"]): string {
   return "문장 분석";
 }
 
-function createManualSelection(selectedText: string, activeTab: ActiveTabInfo | null): SelectionPayload {
-  return {
-    id: createId(),
-    selectedText,
-    surroundingContext: selectedText,
-    selectionKind: classifySelection(selectedText),
-    pageTitle: activeTab?.title ?? "",
-    pageUrl: activeTab?.url ?? "",
-    createdAt: new Date().toISOString()
-  };
-}
-
-function classifySelection(text: string): SelectionPayload["selectionKind"] {
-  const words = text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g) ?? [];
-  const hasSentencePunctuation = /[.!?;:]/.test(text);
-
-  if (words.length === 1 && /^[A-Za-z]+(?:[-'][A-Za-z]+)?$/.test(text)) {
-    return "word";
-  }
-
-  if (words.length <= 6 && !hasSentencePunctuation) {
-    return "phrase";
-  }
-
-  return "sentence";
-}
-
-function createId(): string {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 function hostLabel(url: string): string {
   try {
     const parsedUrl = new URL(url);
@@ -351,11 +289,11 @@ function getTabNotice(activeTab: ActiveTabInfo | null): string | null {
   const isFile = url.startsWith("file://");
 
   if (isPdf && isFile) {
-    return "현재 탭은 로컬 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. 선택한 문장을 복사해서 아래에 붙여넣어 주세요. 로컬 HTML 파일은 확장 프로그램 상세 화면에서 파일 URL 접근 허용이 필요합니다.";
+    return "현재 탭은 로컬 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. PDF 지원은 이후 PDF.js 기반 읽기 모드로 제공할 예정입니다.";
   }
 
   if (isPdf) {
-    return "현재 탭은 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. 선택한 문장을 복사해서 아래에 붙여넣어 주세요.";
+    return "현재 탭은 PDF입니다. Chrome 내장 PDF 뷰어에서는 드래그 선택을 확장 프로그램이 직접 읽지 못할 수 있습니다. PDF 지원은 이후 PDF.js 기반 읽기 모드로 제공할 예정입니다.";
   }
 
   if (isFile) {

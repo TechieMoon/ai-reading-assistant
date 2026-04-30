@@ -170,11 +170,6 @@ h2 {
   padding: 10px 12px;
 }
 
-.manual-form {
-  display: grid;
-  gap: 8px;
-}
-
 .capture-selection-button {
   min-height: 38px;
   border: 1px solid #0f766e;
@@ -188,47 +183,6 @@ h2 {
 
 .capture-selection-button:hover {
   background: #e8f4f1;
-}
-
-.manual-form label {
-  color: #303b4c;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.manual-form textarea {
-  width: 100%;
-  min-height: 108px;
-  resize: vertical;
-  border: 1px solid #cbd5d1;
-  border-radius: 8px;
-  color: #172033;
-  font: inherit;
-  font-size: 14px;
-  line-height: 1.5;
-  padding: 10px;
-}
-
-.manual-form textarea:focus {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.12);
-  outline: none;
-}
-
-.manual-form button {
-  min-height: 38px;
-  border: 1px solid #12343b;
-  border-radius: 8px;
-  background: #12343b;
-  color: #ffffff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.manual-form button:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 
 .answer-panel {
