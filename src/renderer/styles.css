@@ -48,6 +48,38 @@ input {
   padding: 12px 16px;
 }
 
+.brand-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-title img {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+}
+
+.brand-title > div {
+  min-width: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.render-status {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .topbar p,
 .settings-panel p {
   margin: 0 0 4px;
@@ -63,7 +95,7 @@ p {
 }
 
 .topbar h1 {
-  max-width: 62vw;
+  max-width: 54vw;
   overflow: hidden;
   color: #101827;
   font-size: 18px;

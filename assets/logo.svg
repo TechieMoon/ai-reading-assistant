@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">AI Reading Assistant logo</title>
+  <desc id="desc">An open book with a magnifying glass for PDF reading help.</desc>
+  <rect width="256" height="256" rx="56" fill="#12343b"/>
+  <path d="M59 80 120 67v137L59 218Z" fill="#000" opacity=".28"/>
+  <path d="M136 67 197 80v138l-61-14Z" fill="#000" opacity=".28"/>
+  <path d="M52 72 121 56v137L52 209Z" fill="#f7f8f6"/>
+  <path d="M135 56 204 72v137l-69-16Z" fill="#f7f8f6"/>
+  <path d="M68 88 112 78v100l-44 10Z" fill="#d9efe8"/>
+  <path d="M144 78 188 88v100l-44-10Z" fill="#d9efe8"/>
+  <path d="M128 64v136" stroke="#0f766e" stroke-width="9" stroke-linecap="round"/>
+  <path d="M78 111 105 105M78 136l27-6M78 161l22-5M154 105l27 6M154 130l27 6" stroke="#66817c" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="175" cy="159" r="32" fill="#ffffff" fill-opacity=".9" stroke="#f59e0b" stroke-width="14"/>
+  <path d="m194 178 32 32" stroke="#f59e0b" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="175" cy="159" r="16" fill="#bce3d8" opacity=".7"/>
+  <path d="M162 154a19 19 0 0 1 14-13" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".8"/>
+</svg>

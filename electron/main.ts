@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appRoot = join(__dirname, "..");
+const appIconPath = join(appRoot, "assets", "logo.png");
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -14,6 +15,7 @@ function createWindow(): void {
     minWidth: 1040,
     minHeight: 720,
     title: "AI Reading Assistant",
+    icon: appIconPath,
     backgroundColor: "#eef2ef",
     webPreferences: {
       contextIsolation: true,

@@ -5,8 +5,9 @@ import {
   TextLayer,
   type PDFDocumentProxy,
   type PDFPageProxy
-} from "pdfjs-dist";
-import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+} from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+import logoUrl from "../../assets/logo.svg";
 import { answerKindForSelection, classifySelection, cleanPdfText, createSelectionId, hasEnglishText, labelForSelectionKind, normalizeWhitespace } from "../shared/selection";
 import type { AnswerKind, ExplanationResponse, SelectionPayload } from "../shared/types";
 import { clearApiKey, explainSelection, getStoredApiKey, saveApiKey } from "./openaiClient";
@@ -33,6 +34,7 @@ export function App() {
   const [pdfState, setPdfState] = useState<PdfLoadState>("empty");
   const [pdfTitle, setPdfTitle] = useState("PDF를 열어 주세요");
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [renderProgress, setRenderProgress] = useState<string | null>(null);
   const [answerState, setAnswerState] = useState<AnswerState>("idle");
   const [selectedText, setSelectedText] = useState("");
   const [answerKind, setAnswerKind] = useState<AnswerKind | null>(null);
@@ -55,6 +57,7 @@ export function App() {
     setPdfState("loading");
     setPdfTitle(title);
     setPdfError(null);
+    setRenderProgress(null);
     resetAnswer();
     pageTextsRef.current.clear();
     await destroyPdf(pdfDocumentRef.current);
@@ -77,15 +80,25 @@ export function App() {
       }
 
       pdfDocumentRef.current = pdf;
-      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef);
+      setPdfState("ready");
+      setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
+      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef, (renderedPages, totalPages) => {
+        if (renderRunRef.current === currentRun) {
+          setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
+        }
+      });
 
       if (renderRunRef.current === currentRun) {
         setPdfState("ready");
+        setRenderProgress(null);
       }
-    } catch {
+    } catch (error) {
       if (renderRunRef.current === currentRun) {
+        const detail = pdfLoadErrorMessage(error);
+        console.error("PDF load failed:", detail);
         setPdfState("error");
-        setPdfError("PDF를 불러오지 못했습니다. 파일이 손상되었거나 지원되지 않는 형식일 수 있습니다.");
+        setRenderProgress(null);
+        setPdfError(`PDF를 불러오지 못했습니다. ${detail}`);
       }
     }
   }, []);
@@ -248,13 +261,19 @@ export function App() {
     <main className="app-shell">
       <section className="pdf-column">
         <header className="topbar">
-          <div>
-            <p>AI Reading Assistant</p>
-            <h1>{pdfTitle}</h1>
+          <div className="brand-title">
+            <img src={logoUrl} alt="" aria-hidden="true" />
+            <div>
+              <p>AI Reading Assistant</p>
+              <h1>{pdfTitle}</h1>
+            </div>
           </div>
-          <button type="button" onClick={() => fileInputRef.current?.click()}>
-            PDF 열기
-          </button>
+          <div className="topbar-actions">
+            {renderProgress && <span className="render-status">{renderProgress}</span>}
+            <button type="button" onClick={() => fileInputRef.current?.click()}>
+              PDF 열기
+            </button>
+          </div>
           <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" onChange={handleFileChange} />
         </header>
 
@@ -362,7 +381,8 @@ async function renderPdf(
   viewer: HTMLDivElement,
   pageTexts: Map<number, string>,
   runId: number,
-  renderRunRef: MutableRefObject<number>
+  renderRunRef: MutableRefObject<number>,
+  onPageRendered: (renderedPages: number, totalPages: number) => void
 ): Promise<void> {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
     if (renderRunRef.current !== runId) {
@@ -371,6 +391,7 @@ async function renderPdf(
 
     const page = await pdf.getPage(pageNumber);
     await renderPage(page, pageNumber, viewer, pageTexts);
+    onPageRendered(pageNumber, pdf.numPages);
   }
 }
 
@@ -510,4 +531,16 @@ function titleForAnswerKind(kind: AnswerKind): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function pdfLoadErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error) {
+    return error;
+  }
+
+  return "파일이 손상되었거나 현재 렌더링 방식에서 처리할 수 없는 PDF일 수 있습니다.";
 }
