@@ -28,6 +28,9 @@ interface OpenAIResponseBody {
   };
 }
 
+const READABLE_ANSWER_STYLE_HINT =
+  "한국어로 친절하게 설명해주세요. 읽기 쉽게 bullet point, 굵은 글씨, 적절한 이모지를 사용해도 됩니다.";
+
 export class AssistantError extends Error {
   constructor(
     public readonly code: AppErrorPayload["code"],
@@ -150,15 +153,19 @@ function buildUserPrompt({ selection, answerKind }: ExplanationRequest): string 
 
   if (answerKind === "term") {
     const contextSentence = selection.contextSentence?.trim() || truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH);
-    return `${ensureSentencePunctuation(contextSentence)} 이 문장에서 ${selectedText}가 뭐예요?`;
+    return withReadableAnswerStyle(`${ensureSentencePunctuation(contextSentence)} 이 문장에서 ${selectedText}가 뭐예요?`);
   }
 
   if (answerKind === "sentence") {
     const context = truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH);
-    return `${context}\n\n이 문맥에서\n\`\`\`\n${selectedText}\n\`\`\`\n에 대해 설명해주세요.`;
+    return withReadableAnswerStyle(`${context}\n\n이 문맥에서\n\`\`\`\n${selectedText}\n\`\`\`\n에 대해 설명해주세요.`);
   }
 
-  return ["```", selectedText, "```", "에 대해 설명해주세요."].join("\n");
+  return withReadableAnswerStyle(["```", selectedText, "```", "에 대해 설명해주세요."].join("\n"));
+}
+
+function withReadableAnswerStyle(prompt: string): string {
+  return `${prompt}\n\n${READABLE_ANSWER_STYLE_HINT}`;
 }
 
 function extractOutputText(data: OpenAIResponseBody): string {
