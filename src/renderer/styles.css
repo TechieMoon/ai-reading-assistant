@@ -1,8 +1,16 @@
 :root {
-  color: #172033;
-  background: #eef2ef;
+  color: #1d1d1f;
+  background: #f5f5f7;
+  --accent: #007aff;
+  --accent-strong: #0066d6;
+  --panel: rgba(255, 255, 255, 0.86);
+  --panel-solid: #ffffff;
+  --line: rgba(60, 60, 67, 0.16);
+  --muted: #6e6e73;
+  --pdf-bg: #24272d;
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.08);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", Inter, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -20,7 +28,9 @@ body {
 
 body {
   margin: 0;
-  background: #eef2ef;
+  background:
+    radial-gradient(circle at top left, rgba(0, 122, 255, 0.08), transparent 28%),
+    #f5f5f7;
 }
 
 #root {
@@ -35,7 +45,7 @@ input {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 390px;
+  grid-template-columns: minmax(0, 1fr) 410px;
   height: 100vh;
   min-height: 0;
   overflow: hidden;
@@ -48,8 +58,8 @@ input {
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid #d8ded9;
-  background: #2b2f34;
+  border-right: 1px solid var(--line);
+  background: var(--pdf-bg);
 }
 
 .topbar {
@@ -59,9 +69,10 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  background: #ffffff;
-  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
+  padding: 11px 16px;
 }
 
 .brand-title {
@@ -72,10 +83,11 @@ input {
 }
 
 .brand-title img {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   flex: 0 0 auto;
-  border-radius: 8px;
+  border-radius: 9px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
 }
 
 .brand-title > div {
@@ -99,9 +111,9 @@ input {
 .topbar p,
 .settings-panel p {
   margin: 0 0 4px;
-  color: #0f766e;
+  color: var(--accent);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 h1,
@@ -113,7 +125,7 @@ p {
 .topbar h1 {
   max-width: 54vw;
   overflow: hidden;
-  color: #101827;
+  color: #1d1d1f;
   font-size: 18px;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -127,13 +139,13 @@ p {
 .answer-toolbar button,
 .answer-error button {
   min-height: 38px;
-  border: 1px solid #12343b;
-  border-radius: 8px;
-  background: #12343b;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent);
   color: #ffffff;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 700;
   padding: 8px 12px;
 }
 
@@ -145,9 +157,10 @@ p {
   display: flex;
   align-items: center;
   overflow: hidden;
-  border: 1px solid #cbd5d1;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.7);
 }
 
 .zoom-controls button {
@@ -155,14 +168,14 @@ p {
   min-height: 36px;
   border: 0;
   border-radius: 0;
-  background: #ffffff;
-  color: #12343b;
+  background: transparent;
+  color: var(--accent);
   font-size: 17px;
   padding: 4px 10px;
 }
 
 .zoom-controls button:hover:not(:disabled) {
-  background: #e7f0ed;
+  background: rgba(0, 122, 255, 0.08);
 }
 
 .zoom-controls button:disabled {
@@ -172,7 +185,7 @@ p {
 
 .zoom-controls span {
   min-width: 52px;
-  color: #344054;
+  color: #3a3a3c;
   font-size: 12px;
   font-weight: 800;
   text-align: center;
@@ -187,6 +200,7 @@ p {
   gap: 18px;
   overflow: auto;
   padding: 22px;
+  scrollbar-color: rgba(255, 255, 255, 0.36) transparent;
 }
 
 .pdf-column:has(.center-state) .pdf-viewer {
@@ -197,7 +211,7 @@ p {
   position: relative;
   overflow: hidden;
   background: #ffffff;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
 }
 
 .pdf-canvas {
@@ -241,8 +255,8 @@ p {
   max-width: 124px;
   border: 0;
   border-radius: 999px;
-  background: #12343b;
-  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
+  background: rgba(0, 122, 255, 0.94);
+  box-shadow: 0 12px 34px rgba(0, 122, 255, 0.28);
   color: #ffffff;
   cursor: pointer;
   font-size: 13px;
@@ -252,7 +266,7 @@ p {
 }
 
 .floating-action:hover {
-  background: #0f766e;
+  background: var(--accent-strong);
 }
 
 .assistant-panel {
@@ -261,24 +275,25 @@ p {
   min-height: 0;
   min-width: 0;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   overflow: hidden;
-  background: #f7f8f6;
+  background: rgba(245, 245, 247, 0.92);
   padding: 16px;
 }
 
 .settings-panel,
 .selected-card,
 .answer-panel {
-  border: 1px solid #d8ded9;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: var(--shadow-soft);
 }
 
 .settings-panel {
   display: grid;
   gap: 10px;
-  padding: 12px;
+  padding: 14px;
 }
 
 .settings-panel > div:first-child {
@@ -289,7 +304,7 @@ p {
 }
 
 .settings-panel span {
-  color: #667085;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 800;
 }
@@ -302,16 +317,17 @@ p {
 
 .api-row input {
   min-width: 0;
-  border: 1px solid #cbd5d1;
-  border-radius: 8px;
-  color: #172033;
-  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1d1d1f;
+  padding: 9px 11px;
 }
 
 .api-row button.ghost {
-  border-color: #cbd5d1;
+  border-color: var(--line);
   background: #ffffff;
-  color: #172033;
+  color: #1d1d1f;
 }
 
 .api-row button:disabled {
@@ -320,21 +336,60 @@ p {
 }
 
 .selected-card {
-  padding: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.selected-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .selected-card span {
-  color: #b45309;
+  color: var(--accent);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+}
+
+.selected-card-header button {
+  min-height: 30px;
+  border: 1px solid rgba(0, 122, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+}
+
+.selected-card-header button:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.16);
+}
+
+.selected-card-header button:disabled {
+  cursor: progress;
+  opacity: 0.65;
 }
 
 .selected-card p {
-  margin-top: 7px;
-  color: #172033;
+  color: #1d1d1f;
   font-size: 14px;
   line-height: 1.55;
   overflow-wrap: anywhere;
+}
+
+.selected-card small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.selected-card .pronunciation-error {
+  color: #d70015;
 }
 
 .answer-panel {
@@ -345,7 +400,7 @@ p {
 
 .muted,
 .answer-error {
-  color: #667085;
+  color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
   padding: 16px;
@@ -363,19 +418,20 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  border-bottom: 1px solid #e5e9e6;
-  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(14px);
   padding: 10px 12px;
 }
 
 .answer-toolbar span {
-  color: #0f766e;
+  color: var(--accent);
   font-size: 12px;
   font-weight: 800;
 }
 
 .markdown-view {
-  color: #202939;
+  color: #1d1d1f;
   font-size: 14px;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -386,7 +442,7 @@ p {
 .markdown-view h3,
 .markdown-view h4 {
   margin: 18px 0 8px;
-  color: #12343b;
+  color: #1d1d1f;
   line-height: 1.35;
 }
 
@@ -423,15 +479,15 @@ p {
 }
 
 .markdown-view blockquote {
-  border-left: 3px solid #9cc8bd;
-  color: #475467;
+  border-left: 3px solid rgba(0, 122, 255, 0.32);
+  color: #515154;
   padding-left: 10px;
 }
 
 .markdown-view code {
   border-radius: 5px;
-  background: #eef4f1;
-  color: #12343b;
+  background: rgba(0, 122, 255, 0.08);
+  color: #0057b8;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.92em;
   padding: 1px 5px;

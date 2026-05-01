@@ -11,12 +11,13 @@ import logoUrl from "../../assets/logo.svg";
 import { answerKindForSelection, classifySelection, cleanPdfText, createSelectionId, hasEnglishText, labelForSelectionKind, normalizeWhitespace } from "../shared/selection";
 import type { AnswerKind, ExplanationResponse, SelectionPayload } from "../shared/types";
 import { MarkdownView } from "./MarkdownView";
-import { clearApiKey, explainSelection, getStoredApiKey, saveApiKey } from "./openaiClient";
+import { clearApiKey, explainSelection, getStoredApiKey, saveApiKey, synthesizePronunciation } from "./openaiClient";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 type PdfLoadState = "empty" | "loading" | "ready" | "error";
 type AnswerState = "idle" | "loading" | "success" | "error";
+type PronunciationState = "idle" | "loading" | "playing" | "error";
 
 interface FloatingButtonState {
   top: number;
@@ -46,6 +47,8 @@ export function App() {
   const [answerKind, setAnswerKind] = useState<AnswerKind | null>(null);
   const [explanation, setExplanation] = useState<ExplanationResponse | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
+  const [pronunciationState, setPronunciationState] = useState<PronunciationState>("idle");
+  const [pronunciationError, setPronunciationError] = useState<string | null>(null);
   const [floatingButton, setFloatingButton] = useState<FloatingButtonState | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [hasApiKey, setHasApiKey] = useState(false);
@@ -59,6 +62,8 @@ export function App() {
   const renderedScaleRef = useRef(DEFAULT_PDF_SCALE);
   const renderRunRef = useRef(0);
   const zoomRenderTimerRef = useRef<number | null>(null);
+  const pronunciationCacheRef = useRef<Map<string, string>>(new Map());
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const loadPdfData = useCallback(async (data: ArrayBuffer, title: string) => {
     const currentRun = renderRunRef.current + 1;
@@ -122,6 +127,7 @@ export function App() {
 
     return () => {
       clearPendingZoomRender();
+      cleanupPronunciationAudio();
       void destroyPdf(pdfDocumentRef.current);
       pdfDocumentRef.current = null;
     };
@@ -142,6 +148,7 @@ export function App() {
     document.addEventListener("selectionchange", updateSelection);
     document.addEventListener("mouseup", updateSelection, true);
     document.addEventListener("keyup", updateSelection, true);
+    document.addEventListener("dblclick", handlePdfDoubleClick, true);
     document.addEventListener("pointerdown", clearOnPointerDown, true);
     document.addEventListener("wheel", handlePdfWheelZoom, { passive: false });
 
@@ -149,6 +156,7 @@ export function App() {
       document.removeEventListener("selectionchange", updateSelection);
       document.removeEventListener("mouseup", updateSelection, true);
       document.removeEventListener("keyup", updateSelection, true);
+      document.removeEventListener("dblclick", handlePdfDoubleClick, true);
       document.removeEventListener("pointerdown", clearOnPointerDown, true);
       document.removeEventListener("wheel", handlePdfWheelZoom);
     };
@@ -178,6 +186,8 @@ export function App() {
     setAnswerKind(nextAnswerKind);
     setAnswerState("loading");
     setAnswerError(null);
+    setPronunciationState("idle");
+    setPronunciationError(null);
 
     try {
       const response = await explainSelection({
@@ -214,6 +224,51 @@ export function App() {
     clearApiKey();
     setApiKeyInput("");
     setHasApiKey(false);
+  }
+
+  async function playPronunciation() {
+    if (!selectedText || answerKind !== "term") {
+      return;
+    }
+
+    const pronunciationText = normalizeWhitespace(selectedText);
+    setPronunciationState("loading");
+    setPronunciationError(null);
+
+    try {
+      activeAudioRef.current?.pause();
+      let audioUrl = pronunciationCacheRef.current.get(pronunciationText);
+
+      if (!audioUrl) {
+        const audioBlob = await synthesizePronunciation(pronunciationText);
+        audioUrl = URL.createObjectURL(audioBlob);
+        pronunciationCacheRef.current.set(pronunciationText, audioUrl);
+      }
+
+      const audio = new Audio(audioUrl);
+      activeAudioRef.current = audio;
+      setPronunciationState("playing");
+      audio.addEventListener("ended", () => setPronunciationState("idle"), { once: true });
+      audio.addEventListener("error", () => {
+        setPronunciationError("발음을 재생하지 못했습니다.");
+        setPronunciationState("error");
+      }, { once: true });
+      await audio.play();
+    } catch (error) {
+      setPronunciationError(error instanceof Error ? error.message : "발음을 생성하지 못했습니다.");
+      setPronunciationState("error");
+    }
+  }
+
+  function cleanupPronunciationAudio() {
+    activeAudioRef.current?.pause();
+    activeAudioRef.current = null;
+
+    for (const audioUrl of pronunciationCacheRef.current.values()) {
+      URL.revokeObjectURL(audioUrl);
+    }
+
+    pronunciationCacheRef.current.clear();
   }
 
   function handleZoomOut() {
@@ -362,12 +417,28 @@ export function App() {
     });
   }
 
+  function handlePdfDoubleClick(event: MouseEvent) {
+    const viewer = viewerRef.current;
+
+    if (!viewer || !viewer.contains(event.target as Node)) {
+      return;
+    }
+
+    if (selectWordAtPoint(event.clientX, event.clientY, viewer)) {
+      event.preventDefault();
+      event.stopPropagation();
+      window.setTimeout(updatePdfSelection, 0);
+    }
+  }
+
   function resetAnswer() {
     setAnswerState("idle");
     setSelectedText("");
     setAnswerKind(null);
     setExplanation(null);
     setAnswerError(null);
+    setPronunciationState("idle");
+    setPronunciationError(null);
     setFloatingButton(null);
     activeSelectionRef.current = null;
   }
@@ -464,8 +535,17 @@ export function App() {
 
         {selectedText && (
           <section className="selected-card">
-            <span>{answerKind ? titleForAnswerKind(answerKind) : "선택한 텍스트"}</span>
+            <div className="selected-card-header">
+              <span>{answerKind ? titleForAnswerKind(answerKind) : "선택한 텍스트"}</span>
+              {answerKind === "term" && (
+                <button type="button" onClick={playPronunciation} disabled={pronunciationState === "loading"} title="OpenAI AI 음성으로 발음을 생성합니다.">
+                  {pronunciationState === "loading" ? "생성 중" : pronunciationState === "playing" ? "재생 중" : "AI 발음"}
+                </button>
+              )}
+            </div>
             <p>{selectedText}</p>
+            {answerKind === "term" && <small>OpenAI 음성으로 단어/구 발음을 생성합니다.</small>}
+            {pronunciationError && <small className="pronunciation-error">{pronunciationError}</small>}
           </section>
         )}
 
@@ -630,6 +710,79 @@ function expandSelectedTextFromPage(selectedText: string, pageText: string): str
   }
 
   return normalizeWhitespace(pageText.slice(start, end));
+}
+
+function selectWordAtPoint(clientX: number, clientY: number, viewer: HTMLElement): boolean {
+  const range = caretRangeFromPoint(clientX, clientY);
+  const node = range?.startContainer;
+
+  if (!range || !node || !viewer.contains(node)) {
+    return false;
+  }
+
+  const textNode = node.nodeType === Node.TEXT_NODE ? (node as Text) : node.firstChild instanceof Text ? node.firstChild : null;
+  if (!textNode) {
+    return false;
+  }
+
+  let offset = clamp(range.startOffset, 0, textNode.data.length);
+  if (!isWordCharacter(textNode.data[offset]) && offset > 0 && isWordCharacter(textNode.data[offset - 1])) {
+    offset -= 1;
+  }
+
+  if (!isWordCharacter(textNode.data[offset])) {
+    return false;
+  }
+
+  let start = offset;
+  let end = offset;
+
+  while (start > 0 && isWordCharacter(textNode.data[start - 1])) {
+    start -= 1;
+  }
+
+  while (end < textNode.data.length && isWordCharacter(textNode.data[end])) {
+    end += 1;
+  }
+
+  if (start === end) {
+    return false;
+  }
+
+  const wordRange = document.createRange();
+  wordRange.setStart(textNode, start);
+  wordRange.setEnd(textNode, end);
+
+  const selection = window.getSelection();
+  if (!selection) {
+    return false;
+  }
+
+  selection.removeAllRanges();
+  selection.addRange(wordRange);
+  return true;
+}
+
+function caretRangeFromPoint(clientX: number, clientY: number): Range | null {
+  const documentWithCaret = document as Document & {
+    caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+
+  const range = documentWithCaret.caretRangeFromPoint?.(clientX, clientY);
+  if (range) {
+    return range;
+  }
+
+  const position = documentWithCaret.caretPositionFromPoint?.(clientX, clientY);
+  if (!position) {
+    return null;
+  }
+
+  const fallbackRange = document.createRange();
+  fallbackRange.setStart(position.offsetNode, position.offset);
+  fallbackRange.collapse(true);
+  return fallbackRange;
 }
 
 function isWordCharacter(value: string | undefined): boolean {

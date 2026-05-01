@@ -1,4 +1,14 @@
-import { API_KEY_STORAGE_KEY, MAX_CONTEXT_LENGTH, MAX_SELECTED_TEXT_LENGTH, OPENAI_MODEL, OPENAI_RESPONSES_URL } from "../shared/config";
+import {
+  API_KEY_STORAGE_KEY,
+  MAX_CONTEXT_LENGTH,
+  MAX_PRONUNCIATION_TEXT_LENGTH,
+  MAX_SELECTED_TEXT_LENGTH,
+  OPENAI_MODEL,
+  OPENAI_RESPONSES_URL,
+  OPENAI_TTS_MODEL,
+  OPENAI_TTS_URL,
+  OPENAI_TTS_VOICE
+} from "../shared/config";
 import type { AppErrorPayload, ExplanationRequest, ExplanationResponse } from "../shared/types";
 
 interface OpenAIResponseContent {
@@ -104,6 +114,46 @@ export async function explainSelection(request: ExplanationRequest): Promise<Exp
   };
 }
 
+export async function synthesizePronunciation(text: string): Promise<Blob> {
+  const apiKey = getStoredApiKey();
+  const input = normalizePronunciationInput(text);
+
+  if (!apiKey) {
+    throw new AssistantError("missing_api_key", "OpenAI API Key를 먼저 설정해 주세요.");
+  }
+
+  if (!input) {
+    throw new AssistantError("openai_error", "발음할 영어 단어 또는 구를 선택해 주세요.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(OPENAI_TTS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: OPENAI_TTS_MODEL,
+        voice: OPENAI_TTS_VOICE,
+        input,
+        instructions: "Pronounce this English word or short phrase clearly and naturally for a Korean English learner.",
+        response_format: "mp3"
+      })
+    });
+  } catch {
+    throw new AssistantError("network_error", "네트워크 오류로 OpenAI에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요.");
+  }
+
+  if (!response.ok) {
+    const data = (await safeJson(response)) as OpenAIResponseBody;
+    throw new AssistantError("openai_error", toKoreanApiError(response.status, data));
+  }
+
+  return response.blob();
+}
+
 function buildDeveloperPrompt(answerKind: ExplanationRequest["answerKind"]): string {
   const common = [
     "당신은 한국어 사용자가 영어 PDF를 읽을 때 돕는 AI Reading Assistant입니다.",
@@ -162,17 +212,30 @@ function buildDeveloperPrompt(answerKind: ExplanationRequest["answerKind"]): str
 }
 
 function buildUserPrompt({ selection, answerKind }: ExplanationRequest): string {
+  const selectedText = truncate(selection.selectedText, MAX_SELECTED_TEXT_LENGTH);
+  const context = truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH);
+
   return [
-    `요청 유형: ${answerKind}`,
     `PDF 제목: ${selection.pdfTitle}`,
     `페이지: ${selection.pageNumber}`,
     "",
-    "선택한 텍스트:",
-    truncate(selection.selectedText, MAX_SELECTED_TEXT_LENGTH),
+    "문맥:",
+    context,
     "",
-    "주변 문맥:",
-    truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH)
+    buildRequestLine(answerKind, selectedText)
   ].join("\n");
+}
+
+function buildRequestLine(answerKind: ExplanationRequest["answerKind"], selectedText: string): string {
+  if (answerKind === "term") {
+    return `이 문맥에서 \`${escapeInlineCode(selectedText)}\`에 대해 설명해주세요.`;
+  }
+
+  if (answerKind === "sentence") {
+    return ["이 문맥에서", "```", selectedText, "```", "에 대해 설명해주세요."].join("\n");
+  }
+
+  return ["```", selectedText, "```", "에 대해 설명해주세요."].join("\n");
 }
 
 function extractOutputText(data: OpenAIResponseBody): string {
@@ -222,4 +285,12 @@ function truncate(value: string, maxLength: number): string {
   }
 
   return `${value.slice(0, maxLength)}\n...[일부 문맥 생략]`;
+}
+
+function escapeInlineCode(value: string): string {
+  return value.replace(/`/g, "'");
+}
+
+function normalizePronunciationInput(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, MAX_PRONUNCIATION_TEXT_LENGTH);
 }
