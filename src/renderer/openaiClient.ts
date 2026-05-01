@@ -72,7 +72,9 @@ export async function explainSelection(request: ExplanationRequest): Promise<Exp
         ]
       }
     ],
-    temperature: 0.25,
+    reasoning: {
+      effort: "low"
+    },
     max_output_tokens: request.answerKind === "term" ? 700 : 1300
   };
 

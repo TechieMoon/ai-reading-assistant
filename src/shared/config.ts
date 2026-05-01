@@ -1,4 +1,4 @@
-export const OPENAI_MODEL = "gpt-4.1-mini";
+export const OPENAI_MODEL = "gpt-5-mini";
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 export const OPENAI_TTS_MODEL = "gpt-4o-mini-tts";
 export const OPENAI_TTS_URL = "https://api.openai.com/v1/audio/speech";
