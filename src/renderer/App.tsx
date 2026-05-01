@@ -56,7 +56,9 @@ export function App() {
   const activeSelectionRef = useRef<SelectionPayload | null>(null);
   const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
   const pdfScaleRef = useRef(DEFAULT_PDF_SCALE);
+  const renderedScaleRef = useRef(DEFAULT_PDF_SCALE);
   const renderRunRef = useRef(0);
+  const zoomRenderTimerRef = useRef<number | null>(null);
 
   const loadPdfData = useCallback(async (data: ArrayBuffer, title: string) => {
     const currentRun = renderRunRef.current + 1;
@@ -65,8 +67,9 @@ export function App() {
     setPdfTitle(title);
     setPdfError(null);
     setRenderProgress(null);
+    clearPendingZoomRender();
     resetAnswer();
-    pageTextsRef.current.clear();
+    pageTextsRef.current = new Map();
     await destroyPdf(pdfDocumentRef.current);
     pdfDocumentRef.current = null;
 
@@ -88,14 +91,18 @@ export function App() {
 
       pdfDocumentRef.current = pdf;
       setPdfState("ready");
+      const nextPageTexts = new Map<number, string>();
+      pageTextsRef.current = nextPageTexts;
       setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
-      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef, pdfScaleRef.current, (renderedPages, totalPages) => {
+      await renderPdf(pdf, viewer, nextPageTexts, currentRun, renderRunRef, pdfScaleRef.current, (renderedPages, totalPages) => {
         if (renderRunRef.current === currentRun) {
           setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
         }
       });
 
       if (renderRunRef.current === currentRun) {
+        pageTextsRef.current = nextPageTexts;
+        renderedScaleRef.current = pdfScaleRef.current;
         setPdfState("ready");
         setRenderProgress(null);
       }
@@ -114,6 +121,7 @@ export function App() {
     setHasApiKey(Boolean(getStoredApiKey()));
 
     return () => {
+      clearPendingZoomRender();
       void destroyPdf(pdfDocumentRef.current);
       pdfDocumentRef.current = null;
     };
@@ -234,7 +242,23 @@ export function App() {
 
     pdfScaleRef.current = normalizedScale;
     setPdfScale(normalizedScale);
-    void rerenderCurrentPdf(normalizedScale);
+    schedulePdfRerender();
+  }
+
+  function schedulePdfRerender() {
+    clearPendingZoomRender();
+    renderRunRef.current += 1;
+    zoomRenderTimerRef.current = window.setTimeout(() => {
+      zoomRenderTimerRef.current = null;
+      void rerenderCurrentPdf(pdfScaleRef.current);
+    }, 120);
+  }
+
+  function clearPendingZoomRender() {
+    if (zoomRenderTimerRef.current !== null) {
+      window.clearTimeout(zoomRenderTimerRef.current);
+      zoomRenderTimerRef.current = null;
+    }
   }
 
   async function rerenderCurrentPdf(scale: number) {
@@ -249,18 +273,31 @@ export function App() {
     renderRunRef.current = currentRun;
     setFloatingButton(null);
     activeSelectionRef.current = null;
-    pageTextsRef.current.clear();
-    viewer.replaceChildren();
+    const nextPageTexts = new Map<number, string>();
+    const stage = document.createElement("div");
+    const displayedScale = renderedScaleRef.current;
+    const scrollAnchor = {
+      left: viewer.scrollLeft + viewer.clientWidth / 2,
+      top: viewer.scrollTop + viewer.clientHeight / 2
+    };
+
+    stage.className = "pdf-render-stage";
     setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
 
     try {
-      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef, scale, (renderedPages, totalPages) => {
+      await renderPdf(pdf, stage, nextPageTexts, currentRun, renderRunRef, scale, (renderedPages, totalPages) => {
         if (renderRunRef.current === currentRun) {
           setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
         }
       });
 
       if (renderRunRef.current === currentRun) {
+        const scaleRatio = scale / displayedScale;
+        viewer.replaceChildren(...Array.from(stage.childNodes));
+        viewer.scrollLeft = Math.max(0, scrollAnchor.left * scaleRatio - viewer.clientWidth / 2);
+        viewer.scrollTop = Math.max(0, scrollAnchor.top * scaleRatio - viewer.clientHeight / 2);
+        pageTextsRef.current = nextPageTexts;
+        renderedScaleRef.current = scale;
         setRenderProgress(null);
       }
     } catch (error) {
@@ -288,14 +325,9 @@ export function App() {
       return;
     }
 
-    const text = normalizeWhitespace(selection.toString());
-    if (text.length < 2 || !hasEnglishText(text)) {
-      setFloatingButton(null);
-      activeSelectionRef.current = null;
-      return;
-    }
-
     const range = selection.getRangeAt(0);
+    expandSelectionRangeToWordBoundaries(range);
+
     const rect = firstUsableRect(range);
     if (!rect) {
       setFloatingButton(null);
@@ -303,6 +335,14 @@ export function App() {
     }
 
     const pageNumber = detectCurrentPage(selection, rect, viewer);
+    const rawText = normalizeWhitespace(selection.toString());
+    const text = expandSelectedTextFromPage(rawText, pageTextsRef.current.get(pageNumber) ?? "");
+    if (text.length < 2 || !hasEnglishText(text)) {
+      setFloatingButton(null);
+      activeSelectionRef.current = null;
+      return;
+    }
+
     const selectionKind = classifySelection(text);
     const payload: SelectionPayload = {
       id: createSelectionId(),
@@ -504,6 +544,8 @@ async function renderPage(
   pageShell.style.setProperty("--scale-factor", String(scale));
   pageShell.style.setProperty("--user-unit", "1");
   pageShell.style.setProperty("--total-scale-factor", String(scale));
+  pageShell.style.setProperty("--scale-round-x", "1px");
+  pageShell.style.setProperty("--scale-round-y", "1px");
 
   canvas.className = "pdf-canvas";
   canvas.width = Math.floor(viewport.width * window.devicePixelRatio);
@@ -517,6 +559,8 @@ async function renderPage(
   textLayerContainer.style.height = `${viewport.height}px`;
   textLayerContainer.style.setProperty("--scale-factor", String(scale));
   textLayerContainer.style.setProperty("--total-scale-factor", String(scale));
+  textLayerContainer.style.setProperty("--scale-round-x", "1px");
+  textLayerContainer.style.setProperty("--scale-round-y", "1px");
 
   pageShell.append(canvas, textLayerContainer);
   viewer.append(pageShell);
@@ -536,6 +580,60 @@ async function renderPage(
 function textContentToPlainText(textContent: PdfTextContent): string {
   const parts = textContent.items.map((item) => (typeof item.str === "string" ? item.str : ""));
   return cleanPdfText(parts.join(" "));
+}
+
+function expandSelectionRangeToWordBoundaries(range: Range): void {
+  if (range.startContainer.nodeType === Node.TEXT_NODE) {
+    const startNode = range.startContainer as Text;
+    let startOffset = range.startOffset;
+
+    while (startOffset > 0 && isWordCharacter(startNode.data[startOffset - 1])) {
+      startOffset -= 1;
+    }
+
+    if (startOffset !== range.startOffset) {
+      range.setStart(startNode, startOffset);
+    }
+  }
+
+  if (range.endContainer.nodeType === Node.TEXT_NODE) {
+    const endNode = range.endContainer as Text;
+    let endOffset = range.endOffset;
+
+    while (endOffset < endNode.data.length && isWordCharacter(endNode.data[endOffset])) {
+      endOffset += 1;
+    }
+
+    if (endOffset !== range.endOffset) {
+      range.setEnd(endNode, endOffset);
+    }
+  }
+}
+
+function expandSelectedTextFromPage(selectedText: string, pageText: string): string {
+  const normalizedSelection = normalizeWhitespace(selectedText);
+  const index = findSelectionIndex(pageText, normalizedSelection);
+
+  if (index < 0) {
+    return normalizedSelection;
+  }
+
+  let start = index;
+  let end = index + normalizedSelection.length;
+
+  while (start > 0 && isWordCharacter(pageText[start - 1])) {
+    start -= 1;
+  }
+
+  while (end < pageText.length && isWordCharacter(pageText[end])) {
+    end += 1;
+  }
+
+  return normalizeWhitespace(pageText.slice(start, end));
+}
+
+function isWordCharacter(value: string | undefined): boolean {
+  return Boolean(value && /[A-Za-z0-9'-]/.test(value));
 }
 
 function selectionBelongsToViewer(selection: Selection, viewer: HTMLElement): boolean {
