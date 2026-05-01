@@ -1,12 +1,14 @@
 {
   "name": "ai-reading-assistant",
   "version": "0.1.0",
-  "description": "Chrome extension MVP for context-aware English reading assistance in Korean.",
+  "description": "Desktop PDF reading assistant for Korean users reading English PDFs.",
   "type": "module",
   "private": true,
+  "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "dev": "npm run build && electron .",
+    "build": "tsc --noEmit && vite build && tsc -p tsconfig.electron.json",
+    "start": "npm run build && electron .",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -15,11 +17,11 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "@types/chrome": "^0.1.3",
     "@types/node": "^24.7.2",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
+    "electron": "^39.1.4",
     "typescript": "^5.9.3",
     "vite": "^7.1.12"
   }

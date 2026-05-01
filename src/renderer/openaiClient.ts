@@ -1,6 +1,5 @@
-import { MAX_CONTEXT_LENGTH, MAX_SELECTED_TEXT_LENGTH, OPENAI_MODEL, OPENAI_RESPONSES_URL } from "../shared/config";
-import { getSettings } from "../shared/storage";
-import type { AppErrorPayload, ExplanationRequest, ExplanationResponse, ReadingMode } from "../shared/types";
+import { API_KEY_STORAGE_KEY, MAX_CONTEXT_LENGTH, MAX_SELECTED_TEXT_LENGTH, OPENAI_MODEL, OPENAI_RESPONSES_URL } from "../shared/config";
+import type { AppErrorPayload, ExplanationRequest, ExplanationResponse } from "../shared/types";
 
 interface OpenAIResponseContent {
   type?: string;
@@ -16,7 +15,6 @@ interface OpenAIResponseBody {
   output?: OpenAIResponseItem[];
   error?: {
     message?: string;
-    type?: string;
   };
 }
 
@@ -29,11 +27,23 @@ export class AssistantError extends Error {
   }
 }
 
+export function getStoredApiKey(): string {
+  return localStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
+}
+
+export function saveApiKey(apiKey: string): void {
+  localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+}
+
+export function clearApiKey(): void {
+  localStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
 export async function explainSelection(request: ExplanationRequest): Promise<ExplanationResponse> {
-  const { apiKey } = await getSettings();
+  const apiKey = getStoredApiKey();
 
   if (!apiKey) {
-    throw new AssistantError("missing_api_key", "API Key 설정 필요: 옵션 페이지에서 OpenAI API Key를 저장해 주세요.");
+    throw new AssistantError("missing_api_key", "OpenAI API Key를 먼저 설정해 주세요.");
   }
 
   const body = {
@@ -44,7 +54,7 @@ export async function explainSelection(request: ExplanationRequest): Promise<Exp
         content: [
           {
             type: "input_text",
-            text: buildDeveloperPrompt(request.mode)
+            text: buildDeveloperPrompt(request.answerKind)
           }
         ]
       },
@@ -58,8 +68,8 @@ export async function explainSelection(request: ExplanationRequest): Promise<Exp
         ]
       }
     ],
-    temperature: 0.35,
-    max_output_tokens: 1400
+    temperature: 0.25,
+    max_output_tokens: request.answerKind === "term" ? 700 : 1300
   };
 
   let response: Response;
@@ -94,46 +104,65 @@ export async function explainSelection(request: ExplanationRequest): Promise<Exp
   };
 }
 
-function buildDeveloperPrompt(mode: ReadingMode): string {
-  const modeInstruction =
-    mode === "academic"
-      ? [
-          "현재 모드는 논문 모드입니다.",
-          "문장을 더 구조적으로 분석하고, 논리 관계, 수식어 범위, 학술적 표현, 기술적 의미를 정확히 설명하세요.",
-          "논문, 기술 문서, arXiv, 리포트에 적합한 차분하고 명확한 한국어를 사용하세요."
-        ].join("\n")
-      : [
-          "현재 모드는 기사 모드입니다.",
-          "표현의 뉘앙스, 실제 쓰임, 자연스러운 한국어 이해, 실용적인 영어 학습 포인트에 집중하세요.",
-          "뉴스, 블로그, 에세이, 일반 웹 문서에 적합한 자연스러운 한국어를 사용하세요."
-        ].join("\n");
+function buildDeveloperPrompt(answerKind: ExplanationRequest["answerKind"]): string {
+  const common = [
+    "당신은 한국어 사용자가 영어 PDF를 읽을 때 돕는 AI Reading Assistant입니다.",
+    "모든 답변은 자연스럽고 정확한 한국어로 작성하세요.",
+    "선택 텍스트와 주변 문맥을 함께 참고하되, 답변에서 추론 과정을 장황하게 설명하지 마세요.",
+    "번역만 하는 도구가 아니라 이해를 돕는 뜻풀이/해석 도구입니다.",
+    "문맥에 없는 내용을 만들지 말고, 불확실하면 단정하지 마세요."
+  ];
+
+  if (answerKind === "term") {
+    return [
+      ...common,
+      "",
+      "선택된 텍스트는 단어 또는 짧은 구입니다.",
+      "주변 문맥을 참고해 가장 적절한 뜻을 특정하세요.",
+      "하지만 답변에는 '문맥상', '주변 문맥에서', '이 문장에서' 같은 말을 붙이지 마세요.",
+      "문맥을 설명하지 말고, 선택한 단어/구의 뜻과 뉘앙스만 풀이하세요.",
+      "한국어 단어 하나로만 끝내지 말고, 의미 범위와 자연스러운 쓰임을 짧게 설명하세요.",
+      "",
+      "형식:",
+      "## 뜻 풀이",
+      "## 비슷한 표현"
+    ].join("\n");
+  }
+
+  if (answerKind === "sentence") {
+    return [
+      ...common,
+      "",
+      "선택된 텍스트는 한 문장입니다.",
+      "먼저 문장 전체를 자연스럽게 한국어로 해석하세요.",
+      "그 다음 이해에 중요한 핵심 표현 몇 개를 짧게 풀이하세요.",
+      "불필요한 문법 강의나 긴 배경 설명은 피하세요.",
+      "",
+      "형식:",
+      "## 문장 해석",
+      "## 핵심 표현"
+    ].join("\n");
+  }
 
   return [
-    "당신은 한국어 사용자를 위한 AI 영어 읽기 어시스턴트입니다.",
-    "목표는 번역이 아니라 이해를 돕는 것입니다.",
-    "선택된 영어 텍스트와 주변 문맥을 함께 보고, 왜 그런 의미가 되는지 초급자도 따라올 수 있게 설명하세요.",
-    "직역 위주로 답하지 말고 문맥, 표현 의도, 문장 구조, 학습 포인트를 중심으로 설명하세요.",
-    "부정확한 과장이나 문맥에 없는 단정은 피하고, 불확실하면 가능성을 구분해서 말하세요.",
-    modeInstruction,
+    ...common,
     "",
-    "응답은 반드시 한국어로 작성하고 아래 섹션을 포함하세요.",
-    "## 선택한 텍스트",
-    "## 문맥 의미",
-    "## 왜 이렇게 쓰였는지",
-    "## 문장/표현 구조 설명",
-    "## 유용한 영어 표현",
-    "## 선택적 번역",
+    "선택된 텍스트는 여러 문장 또는 문단입니다.",
+    "먼저 선택한 전체 내용을 자연스럽게 한국어로 해석하세요.",
+    "그 다음 전체 이해에 중요한 핵심 표현 몇 개를 짧게 풀이하세요.",
+    "문장별로 지나치게 쪼개지 말고, 읽는 흐름이 살아 있게 해석하세요.",
     "",
-    "선택적 번역은 마지막에 짧게만 제공하세요. 번역을 핵심 기능처럼 강조하지 마세요."
+    "형식:",
+    "## 전체 해석",
+    "## 핵심 표현"
   ].join("\n");
 }
 
-function buildUserPrompt({ selection, mode }: ExplanationRequest): string {
+function buildUserPrompt({ selection, answerKind }: ExplanationRequest): string {
   return [
-    `모드: ${mode === "academic" ? "논문 모드" : "기사 모드"}`,
-    `페이지 제목: ${selection.pageTitle || "제목 없음"}`,
-    `페이지 URL: ${selection.pageUrl}`,
-    `선택 유형: ${selection.selectionKind}`,
+    `요청 유형: ${answerKind}`,
+    `PDF 제목: ${selection.pdfTitle}`,
+    `페이지: ${selection.pageNumber}`,
     "",
     "선택한 텍스트:",
     truncate(selection.selectedText, MAX_SELECTED_TEXT_LENGTH),
@@ -170,7 +199,7 @@ function toKoreanApiError(status: number, data: OpenAIResponseBody): string {
   const apiMessage = data.error?.message;
 
   if (status === 401) {
-    return "OpenAI API Key를 인증하지 못했습니다. 옵션 페이지에서 키가 올바른지 확인해 주세요.";
+    return "OpenAI API Key를 인증하지 못했습니다. API Key가 올바른지 확인해 주세요.";
   }
 
   if (status === 429) {

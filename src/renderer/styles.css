@@ -17,24 +17,25 @@ body {
   background: #eef2ef;
 }
 
-button {
+button,
+input {
   font: inherit;
 }
 
-.pdf-reader-shell {
+.app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-columns: minmax(0, 1fr) 390px;
   min-height: 100vh;
 }
 
-.pdf-viewer-column {
+.pdf-column {
   position: relative;
   min-width: 0;
   border-right: 1px solid #d8ded9;
   background: #2b2f34;
 }
 
-.pdf-toolbar {
+.topbar {
   position: sticky;
   top: 0;
   z-index: 20;
@@ -47,8 +48,8 @@ button {
   padding: 12px 16px;
 }
 
-.pdf-toolbar p,
-.ai-panel header p {
+.topbar p,
+.settings-panel p {
   margin: 0 0 4px;
   color: #0f766e;
   font-size: 12px;
@@ -61,7 +62,7 @@ p {
   margin: 0;
 }
 
-.pdf-toolbar h1 {
+.topbar h1 {
   max-width: 62vw;
   overflow: hidden;
   color: #101827;
@@ -71,9 +72,9 @@ p {
   white-space: nowrap;
 }
 
-.pdf-toolbar button,
-.pdf-empty-state button,
-.pdf-error button,
+.topbar button,
+.center-state button,
+.api-row button,
 .answer-toolbar button,
 .answer-error button {
   min-height: 38px;
@@ -87,7 +88,7 @@ p {
   padding: 8px 12px;
 }
 
-.pdf-toolbar input {
+.topbar input {
   display: none;
 }
 
@@ -117,9 +118,7 @@ p {
   opacity: 1;
 }
 
-.pdf-empty-state,
-.pdf-loading,
-.pdf-error {
+.center-state {
   display: grid;
   min-height: calc(100vh - 64px);
   place-items: center;
@@ -130,11 +129,14 @@ p {
   text-align: center;
 }
 
-.pdf-error p {
-  max-width: 460px;
+.center-state p {
   color: #dce3e0;
   font-size: 14px;
   line-height: 1.6;
+}
+
+.error-state p {
+  max-width: 520px;
 }
 
 .floating-action {
@@ -158,7 +160,7 @@ p {
   background: #0f766e;
 }
 
-.ai-panel {
+.assistant-panel {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -167,57 +169,69 @@ p {
   padding: 16px;
 }
 
-.ai-panel h2 {
-  color: #101827;
-  font-size: 20px;
-  line-height: 1.3;
-}
-
-.mode-switch {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  padding: 4px;
-  border: 1px solid #d8ded9;
-  border-radius: 8px;
-  background: #eef2ef;
-}
-
-.mode-switch button {
-  min-height: 36px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #566272;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.mode-switch button.active {
-  background: #12343b;
-  color: #ffffff;
-  box-shadow: 0 6px 18px rgba(18, 52, 59, 0.18);
-}
-
-.selected-text,
+.settings-panel,
+.selected-card,
 .answer-panel {
   border: 1px solid #d8ded9;
   border-radius: 8px;
   background: #ffffff;
 }
 
-.selected-text {
+.settings-panel {
+  display: grid;
+  gap: 10px;
   padding: 12px;
 }
 
-.selected-text span {
+.settings-panel > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.settings-panel span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.api-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+}
+
+.api-row input {
+  min-width: 0;
+  border: 1px solid #cbd5d1;
+  border-radius: 8px;
+  color: #172033;
+  padding: 8px 10px;
+}
+
+.api-row button.ghost {
+  border-color: #cbd5d1;
+  background: #ffffff;
+  color: #172033;
+}
+
+.api-row button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.selected-card {
+  padding: 12px;
+}
+
+.selected-card span {
   color: #b45309;
   font-size: 12px;
   font-weight: 800;
 }
 
-.selected-text p {
+.selected-card p {
   margin-top: 7px;
   color: #172033;
   font-size: 14px;
@@ -227,7 +241,7 @@ p {
 
 .answer-panel {
   flex: 1;
-  min-height: 260px;
+  min-height: 300px;
   overflow: auto;
 }
 
@@ -271,16 +285,16 @@ p {
   white-space: pre-wrap;
 }
 
-@media (max-width: 900px) {
-  .pdf-reader-shell {
+@media (max-width: 980px) {
+  .app-shell {
     grid-template-columns: 1fr;
   }
 
-  .pdf-viewer-column {
+  .pdf-column {
     border-right: 0;
   }
 
-  .ai-panel {
-    min-height: 520px;
+  .assistant-panel {
+    min-height: 560px;
   }
 }

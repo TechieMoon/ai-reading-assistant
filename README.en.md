@@ -3,102 +3,85 @@
 🇺🇸 English
 🇰🇷 [한국어](./README.md)
 
-AI Reading Assistant is a Chrome extension MVP for Korean users who read English articles, papers, blogs,
-documentation, and PDFs. When a user selects English text, the extension uses nearby context to explain the meaning,
-structure, wording, and learning points in Korean.
+AI Reading Assistant is a desktop client for Korean users reading English PDFs. It is no longer a Chrome Extension. The
+app focuses only on opening and reading PDF files inside the desktop client.
 
-This project is not a simple translator. Translation is intentionally kept as a small optional section. The main value is
-understanding why an English expression means what it means in context.
+It is not a simple translator. For words and short phrases, it uses context to explain the appropriate meaning. For one
+sentence or multiple sentences, it provides a natural Korean rendering and explains a few key expressions.
 
 ## Features
 
-- Text selection detection on normal webpages
-- Small floating button near selected text
-- Selection-aware labels: "뜻 설명", "문맥 의미", "문장 분석"
-- Chrome Side Panel explanation UI for webpages
-- Custom PDF.js-based PDF Reader inside the extension
-- PDF text selection, context extraction, and AI explanation inside the PDF Reader
-- Article Mode for natural nuance, expression, and practical learning
-- Academic Mode for sentence structure, logic, academic wording, and technical meaning
+- Electron desktop app
+- PDF.js-based PDF rendering
+- Text selection on the PDF text layer
+- Word/short phrase selection: contextual meaning explanation
+- Single sentence selection: sentence rendering + key expressions
+- Multi-sentence selection: full rendering + key expressions
+- No Article Mode or Academic Mode
 - BYOK OpenAI API key setup
-- API key stored only in `chrome.storage.local`
+- API key stored only in app localStorage
+- No backend server
 
-## Installation
+## Install And Run
 
 ```bash
 npm install
 npm run build
+npm start
 ```
 
-1. Open `chrome://extensions` in Chrome.
-2. Enable Developer mode.
-3. Click Load unpacked.
-4. Select the `dist` folder from this repository.
+For a quick development run:
 
-## OpenAI API Key
+```bash
+npm run dev
+```
 
-1. Click "API Key 설정" in the extension popup, or open the options page.
-2. Enter and save your own OpenAI API key.
-3. Select English text on a webpage or inside the PDF Reader and click the floating button.
+## Usage
 
-This MVP is a BYOK prototype. It does not include a backend server.
+1. Launch the app.
+2. Save your own OpenAI API key in the right panel.
+3. Click "PDF 열기" and open an English PDF.
+4. Select an English word, phrase, sentence, or multiple sentences.
+5. Click the floating button near the selected text.
 
-## Webpage Usage
+Button and answer behavior depends on the selected text.
 
-Normal webpages are supported directly. Select English text and a floating "뜻 설명", "문맥 의미", or "문장 분석" button will
-appear near the selection. Click it to open the Chrome Side Panel explanation.
+- Word/short phrase: "뜻 풀이"
+- One sentence: "문장 해석"
+- Multiple sentences: "전체 해석"
 
-## PDF Usage
+## Answer Policy
 
-Chrome's built-in PDF viewer does not reliably expose PDF body text and selection context to Chrome extensions. This
-project does not ask users to change Chrome's default PDF viewer. Instead, PDFs are reopened inside the extension's
-custom PDF.js-based PDF Reader.
+For a word or short phrase, the app uses surrounding context to identify the right meaning. The answer does not include a
+long explanation such as "because of the surrounding context"; it focuses on the meaning and nuance of the selected term.
 
-There are two PDF flows:
+For one sentence, the app provides a natural Korean rendering and explains a few key expressions.
 
-1. Extension popup → "PDF 열기" → choose a local PDF in `pdf-reader.html`
-2. Open a PDF in the browser → extension popup → "이 PDF를 AI Reader로 열기"
-
-The PDF Reader runs at `chrome-extension://.../pdf-reader.html`. It renders PDFs with PDF.js, extracts per-page text, and
-sends selected text plus surrounding context to OpenAI for Korean explanation.
-
-## PDF Troubleshooting
-
-- Directly loading local `file://` PDF URLs may require enabling "Allow access to file URLs" on the extension details
-  page.
-- Some remote PDFs cannot be loaded directly because of CORS, authentication, or download restrictions.
-- If you see "이 PDF는 직접 불러올 수 없습니다", download the PDF file and reopen it through the extension popup's
-  "PDF 열기" flow.
+For multiple sentences, the app renders the full selected passage and explains a few key expressions that help
+understanding.
 
 ## Security Notes
 
 - Never include a real API key in source code, README files, examples, screenshots, tests, logs, or commits.
-- The API key is stored in this browser's `chrome.storage.local`.
-- `.env`, `.env.*`, `secrets.*`, `*.local`, `node_modules`, `dist`, and `build` are ignored by Git.
+- The API key is stored only in the app's localStorage on the user's PC.
+- `.env`, `.env.*`, `secrets.*`, `*.local`, `node_modules`, `dist`, `dist-electron`, and `build` are ignored by Git.
 - Check `git diff` and `git status` before pushing to avoid committing sensitive data.
-
-## Roadmap
-
-- Coordinate-based PDF selection/context matching
-- Vocabulary list
-- Learning history
-- English UI
-- Global expansion
 
 ## Project Structure
 
 ```text
+electron/
+  main.ts        Electron main process
 src/
-  background/   OpenAI calls and message handling
-  content/      Webpage selection detection and floating button
-  pdf-reader/   PDF.js-based PDF Reader
-  popup/        PDF open, AI Reader open, and API key settings entry point
-  sidepanel/    Chrome Side Panel React UI
-  options/      API key settings React UI
-  shared/       Shared types, messages, config, selection utilities, and storage helpers
-manifest.json
-pdf-reader.html
-popup.html
-README.md
-README.en.md
+  renderer/      PDF Reader UI, OpenAI calls, API key storage
+  shared/        Shared types, config, and selection utilities
+index.html       Desktop app renderer entry
 ```
+
+## Roadmap
+
+- Coordinate-based PDF context matching
+- Recent PDF list
+- Vocabulary list
+- Learning history
+- App packaging and distribution

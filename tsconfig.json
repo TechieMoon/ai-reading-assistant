@@ -15,7 +15,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["chrome"]
+    "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts", "sidepanel.html", "options.html"]
+  "include": ["src/renderer", "src/shared", "vite.config.ts"]
 }

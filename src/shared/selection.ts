@@ -1,4 +1,4 @@
-import type { SelectionKind } from "./types";
+import type { AnswerKind, SelectionKind } from "./types";
 
 export function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -13,30 +13,35 @@ export function cleanPdfText(value: string): string {
 }
 
 export function classifySelection(text: string): SelectionKind {
-  const words = text.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g) ?? [];
-  const hasSentencePunctuation = /[.!?;:]/.test(text);
+  const normalized = normalizeWhitespace(text);
+  const words = normalized.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g) ?? [];
+  const sentenceCount = countSentences(normalized);
 
-  if (words.length === 1 && /^[A-Za-z]+(?:[-'][A-Za-z]+)?$/.test(text)) {
-    return "word";
+  if (words.length <= 6 && sentenceCount === 0) {
+    return "term";
   }
 
-  if (words.length <= 6 && !hasSentencePunctuation) {
-    return "phrase";
+  if (sentenceCount <= 1) {
+    return "sentence";
   }
 
-  return "sentence";
+  return "passage";
+}
+
+export function answerKindForSelection(kind: SelectionKind): AnswerKind {
+  return kind === "term" ? "term" : kind;
 }
 
 export function labelForSelectionKind(kind: SelectionKind): string {
-  if (kind === "word") {
-    return "뜻 설명";
+  if (kind === "term") {
+    return "뜻 풀이";
   }
 
-  if (kind === "phrase") {
-    return "문맥 의미";
+  if (kind === "sentence") {
+    return "문장 해석";
   }
 
-  return "문장 분석";
+  return "전체 해석";
 }
 
 export function hasEnglishText(text: string): boolean {
@@ -49,4 +54,9 @@ export function createSelectionId(): string {
   }
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function countSentences(text: string): number {
+  const matches = text.match(/[.!?]+(?:\s|$)/g);
+  return matches?.length ?? 0;
 }
