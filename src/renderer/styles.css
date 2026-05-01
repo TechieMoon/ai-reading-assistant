@@ -12,9 +12,20 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background: #eef2ef;
+}
+
+#root {
+  height: 100%;
+  min-height: 0;
 }
 
 button,
@@ -25,19 +36,24 @@ input {
 .app-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 390px;
-  min-height: 100vh;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .pdf-column {
   position: relative;
+  display: flex;
+  min-height: 0;
   min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
   border-right: 1px solid #d8ded9;
   background: #2b2f34;
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
+  flex: 0 0 auto;
   z-index: 20;
   display: flex;
   align-items: center;
@@ -164,9 +180,17 @@ p {
 
 .pdf-viewer {
   display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
   justify-content: center;
   gap: 18px;
+  overflow: auto;
   padding: 22px;
+}
+
+.pdf-column:has(.center-state) .pdf-viewer {
+  display: none;
 }
 
 .pdf-page {
@@ -190,7 +214,8 @@ p {
 
 .center-state {
   display: grid;
-  min-height: calc(100vh - 64px);
+  min-height: 0;
+  flex: 1;
   place-items: center;
   align-content: center;
   gap: 14px;
@@ -232,9 +257,12 @@ p {
 
 .assistant-panel {
   display: flex;
+  height: 100vh;
+  min-height: 0;
   min-width: 0;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
   background: #f7f8f6;
   padding: 16px;
 }
@@ -311,7 +339,7 @@ p {
 
 .answer-panel {
   flex: 1;
-  min-height: 300px;
+  min-height: 0;
   overflow: auto;
 }
 
@@ -433,6 +461,8 @@ p {
   }
 
   .assistant-panel {
+    height: auto;
     min-height: 560px;
+    overflow: visible;
   }
 }
