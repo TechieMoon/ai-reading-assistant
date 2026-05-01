@@ -45,7 +45,7 @@ input {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 410px;
+  grid-template-columns: minmax(0, 1fr) clamp(500px, 30vw, 640px);
   height: 100vh;
   min-height: 0;
   overflow: hidden;
@@ -432,18 +432,33 @@ p {
 
 .markdown-view {
   color: #1d1d1f;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.7;
   overflow-wrap: anywhere;
-  padding: 14px;
+  padding: 18px;
+}
+
+.markdown-view > :first-child {
+  margin-top: 0;
+}
+
+.markdown-view > :last-child {
+  margin-bottom: 0;
 }
 
 .markdown-view h2,
 .markdown-view h3,
 .markdown-view h4 {
-  margin: 18px 0 8px;
+  margin: 22px 0 9px;
   color: #1d1d1f;
   line-height: 1.35;
+}
+
+.markdown-view h1 {
+  margin: 0 0 14px;
+  color: #1d1d1f;
+  font-size: 22px;
+  line-height: 1.3;
 }
 
 .markdown-view h2:first-child,
@@ -453,19 +468,20 @@ p {
 }
 
 .markdown-view h2 {
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .markdown-view h3,
 .markdown-view h4 {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .markdown-view p,
 .markdown-view blockquote,
 .markdown-view pre,
 .markdown-view ul,
-.markdown-view ol {
+.markdown-view ol,
+.markdown-view table {
   margin: 0 0 12px;
 }
 
@@ -476,6 +492,22 @@ p {
 
 .markdown-view li + li {
   margin-top: 5px;
+}
+
+.markdown-view li > ul,
+.markdown-view li > ol {
+  margin: 6px 0 0;
+}
+
+.markdown-view li > p {
+  margin: 0;
+}
+
+.markdown-view hr {
+  height: 1px;
+  border: 0;
+  background: var(--line);
+  margin: 18px 0;
 }
 
 .markdown-view blockquote {
@@ -507,7 +539,37 @@ p {
   padding: 0;
 }
 
-@media (max-width: 980px) {
+.markdown-view table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.markdown-view th,
+.markdown-view td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-view th {
+  background: rgba(0, 122, 255, 0.06);
+  font-weight: 800;
+}
+
+.markdown-view tr:last-child td {
+  border-bottom: 0;
+}
+
+.markdown-view input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+@media (max-width: 1120px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
