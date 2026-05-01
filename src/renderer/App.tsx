@@ -391,7 +391,8 @@ export function App() {
 
     const pageNumber = detectCurrentPage(selection, rect, viewer);
     const rawText = normalizeWhitespace(selection.toString());
-    const text = expandSelectedTextFromPage(rawText, pageTextsRef.current.get(pageNumber) ?? "");
+    const pageText = pageTextsRef.current.get(pageNumber) ?? "";
+    const text = expandSelectedTextFromPage(rawText, pageText);
     if (text.length < 2 || !hasEnglishText(text)) {
       setFloatingButton(null);
       activeSelectionRef.current = null;
@@ -403,6 +404,7 @@ export function App() {
       id: createSelectionId(),
       selectedText: text,
       surroundingContext: buildPdfContext(pageNumber, text, pageTextsRef.current),
+      contextSentence: extractSentenceContainingSelection(pageText, text),
       selectionKind,
       pdfTitle,
       pageNumber,
@@ -710,6 +712,35 @@ function expandSelectedTextFromPage(selectedText: string, pageText: string): str
   }
 
   return normalizeWhitespace(pageText.slice(start, end));
+}
+
+function extractSentenceContainingSelection(pageText: string, selectedText: string): string {
+  const normalizedSelection = normalizeWhitespace(selectedText);
+  const index = findSelectionIndex(pageText, normalizedSelection);
+
+  if (index < 0) {
+    return "";
+  }
+
+  const sentenceStart = findSentenceStart(pageText, index);
+  const sentenceEnd = findSentenceEnd(pageText, index + normalizedSelection.length);
+
+  return normalizeWhitespace(pageText.slice(sentenceStart, sentenceEnd));
+}
+
+function findSentenceStart(text: string, index: number): number {
+  const boundary = Math.max(text.lastIndexOf(".", index - 1), text.lastIndexOf("?", index - 1), text.lastIndexOf("!", index - 1));
+  return boundary >= 0 ? boundary + 1 : 0;
+}
+
+function findSentenceEnd(text: string, index: number): number {
+  const candidates = [text.indexOf(".", index), text.indexOf("?", index), text.indexOf("!", index)].filter((candidate) => candidate >= 0);
+
+  if (candidates.length === 0) {
+    return text.length;
+  }
+
+  return Math.min(...candidates) + 1;
 }
 
 function selectWordAtPoint(clientX: number, clientY: number, viewer: HTMLElement): boolean {

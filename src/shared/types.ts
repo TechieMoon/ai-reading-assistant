@@ -5,6 +5,7 @@ export interface SelectionPayload {
   id: string;
   selectedText: string;
   surroundingContext: string;
+  contextSentence?: string;
   selectionKind: SelectionKind;
   pdfTitle: string;
   pageNumber: number;

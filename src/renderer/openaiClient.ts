@@ -60,15 +60,6 @@ export async function explainSelection(request: ExplanationRequest): Promise<Exp
     model: OPENAI_MODEL,
     input: [
       {
-        role: "developer",
-        content: [
-          {
-            type: "input_text",
-            text: buildDeveloperPrompt(request.answerKind)
-          }
-        ]
-      },
-      {
         role: "user",
         content: [
           {
@@ -154,72 +145,17 @@ export async function synthesizePronunciation(text: string): Promise<Blob> {
   return response.blob();
 }
 
-function buildDeveloperPrompt(answerKind: ExplanationRequest["answerKind"]): string {
-  const common = [
-    "당신은 한국어 사용자가 영어 PDF를 읽을 때 돕는 AI Reading Assistant입니다.",
-    "모든 답변은 자연스럽고 정확한 한국어로 작성하세요.",
-    "선택 텍스트와 주변 문맥을 함께 참고하되, 답변에서 추론 과정을 장황하게 설명하지 마세요.",
-    "번역만 하는 도구가 아니라 이해를 돕는 뜻풀이/해석 도구입니다.",
-    "문맥에 없는 내용을 만들지 말고, 불확실하면 단정하지 마세요."
-  ];
-
-  if (answerKind === "term") {
-    return [
-      ...common,
-      "",
-      "선택된 텍스트는 단어 또는 짧은 구입니다.",
-      "주변 문맥을 참고해 가장 적절한 뜻을 특정하세요.",
-      "답변 맨 앞에는 한영사전처럼 가장 가까운 한국어 뜻 하나를 짧게 제시하세요.",
-      "그 뜻은 문맥에서 추론한 대표 의미여야 하며, 여러 뜻을 나열하지 마세요.",
-      "하지만 답변에는 '문맥상', '주변 문맥에서', '이 문장에서' 같은 말을 붙이지 마세요.",
-      "문맥을 설명하지 말고, 선택한 단어/구의 뜻과 뉘앙스만 풀이하세요.",
-      "한국어 단어 하나로만 끝내지 말고, 의미 범위와 자연스러운 쓰임을 짧게 설명하세요."
-    ].join("\n");
-  }
-
-  if (answerKind === "sentence") {
-    return [
-      ...common,
-      "",
-      "선택된 텍스트는 한 문장입니다.",
-      "먼저 문장 전체를 자연스럽게 한국어로 해석하세요.",
-      "그 다음 이해에 중요한 핵심 표현 몇 개를 짧게 풀이하세요.",
-      "불필요한 문법 강의나 긴 배경 설명은 피하세요."
-    ].join("\n");
-  }
-
-  return [
-    ...common,
-    "",
-    "선택된 텍스트는 여러 문장 또는 문단입니다.",
-    "먼저 선택한 전체 내용을 자연스럽게 한국어로 해석하세요.",
-    "그 다음 전체 이해에 중요한 핵심 표현 몇 개를 짧게 풀이하세요.",
-    "문장별로 지나치게 쪼개지 말고, 읽는 흐름이 살아 있게 해석하세요."
-  ].join("\n");
-}
-
 function buildUserPrompt({ selection, answerKind }: ExplanationRequest): string {
   const selectedText = truncate(selection.selectedText, MAX_SELECTED_TEXT_LENGTH);
-  const context = truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH);
 
-  return [
-    `PDF 제목: ${selection.pdfTitle}`,
-    `페이지: ${selection.pageNumber}`,
-    "",
-    "문맥:",
-    context,
-    "",
-    buildRequestLine(answerKind, selectedText)
-  ].join("\n");
-}
-
-function buildRequestLine(answerKind: ExplanationRequest["answerKind"], selectedText: string): string {
   if (answerKind === "term") {
-    return `이 문맥에서 \`${escapeInlineCode(selectedText)}\`에 대해 설명해주세요.`;
+    const contextSentence = selection.contextSentence?.trim() || truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH);
+    return `${ensureSentencePunctuation(contextSentence)} 이 문장에서 ${selectedText}가 뭐예요?`;
   }
 
   if (answerKind === "sentence") {
-    return ["이 문맥에서", "```", selectedText, "```", "에 대해 설명해주세요."].join("\n");
+    const context = truncate(selection.surroundingContext, MAX_CONTEXT_LENGTH);
+    return `${context}\n\n이 문맥에서\n\`\`\`\n${selectedText}\n\`\`\`\n에 대해 설명해주세요.`;
   }
 
   return ["```", selectedText, "```", "에 대해 설명해주세요."].join("\n");
@@ -274,8 +210,14 @@ function truncate(value: string, maxLength: number): string {
   return `${value.slice(0, maxLength)}\n...[일부 문맥 생략]`;
 }
 
-function escapeInlineCode(value: string): string {
-  return value.replace(/`/g, "'");
+function ensureSentencePunctuation(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function normalizePronunciationInput(value: string): string {
