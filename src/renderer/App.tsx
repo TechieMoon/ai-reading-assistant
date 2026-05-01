@@ -29,6 +29,17 @@ interface PdfTextContent {
   items: Array<{ str?: string } | Record<string, unknown>>;
 }
 
+interface PageTextIndex {
+  text: string;
+  segments: TextSegment[];
+}
+
+interface TextSegment {
+  start: number;
+  end: number;
+  node: Text;
+}
+
 const PDF_CONTEXT_RADIUS = 800;
 const ADJACENT_PAGE_CONTEXT = 500;
 const DEFAULT_PDF_SCALE = 1.25;
@@ -56,6 +67,7 @@ export function App() {
   const viewerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pageTextsRef = useRef<Map<number, string>>(new Map());
+  const pageTextIndexesRef = useRef<Map<number, PageTextIndex>>(new Map());
   const activeSelectionRef = useRef<SelectionPayload | null>(null);
   const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
   const pdfScaleRef = useRef(DEFAULT_PDF_SCALE);
@@ -75,6 +87,7 @@ export function App() {
     clearPendingZoomRender();
     resetAnswer();
     pageTextsRef.current = new Map();
+    pageTextIndexesRef.current = new Map();
     await destroyPdf(pdfDocumentRef.current);
     pdfDocumentRef.current = null;
 
@@ -97,9 +110,10 @@ export function App() {
       pdfDocumentRef.current = pdf;
       setPdfState("ready");
       const nextPageTexts = new Map<number, string>();
+      const nextPageTextIndexes = new Map<number, PageTextIndex>();
       pageTextsRef.current = nextPageTexts;
       setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
-      await renderPdf(pdf, viewer, nextPageTexts, currentRun, renderRunRef, pdfScaleRef.current, (renderedPages, totalPages) => {
+      await renderPdf(pdf, viewer, nextPageTexts, nextPageTextIndexes, currentRun, renderRunRef, pdfScaleRef.current, (renderedPages, totalPages) => {
         if (renderRunRef.current === currentRun) {
           setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
         }
@@ -107,6 +121,7 @@ export function App() {
 
       if (renderRunRef.current === currentRun) {
         pageTextsRef.current = nextPageTexts;
+        pageTextIndexesRef.current = nextPageTextIndexes;
         renderedScaleRef.current = pdfScaleRef.current;
         setPdfState("ready");
         setRenderProgress(null);
@@ -134,7 +149,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const updateSelection = () => window.setTimeout(updatePdfSelection, 40);
+    const updateSelection = () => window.setTimeout(() => updatePdfSelection(false), 40);
+    const finalizeSelection = () => window.setTimeout(() => updatePdfSelection(true), 40);
     const clearOnPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (viewerRef.current?.contains(target) || (target as HTMLElement).closest?.(".floating-action")) {
@@ -146,16 +162,16 @@ export function App() {
     };
 
     document.addEventListener("selectionchange", updateSelection);
-    document.addEventListener("mouseup", updateSelection, true);
-    document.addEventListener("keyup", updateSelection, true);
+    document.addEventListener("mouseup", finalizeSelection, true);
+    document.addEventListener("keyup", finalizeSelection, true);
     document.addEventListener("dblclick", handlePdfDoubleClick, true);
     document.addEventListener("pointerdown", clearOnPointerDown, true);
     document.addEventListener("wheel", handlePdfWheelZoom, { passive: false });
 
     return () => {
       document.removeEventListener("selectionchange", updateSelection);
-      document.removeEventListener("mouseup", updateSelection, true);
-      document.removeEventListener("keyup", updateSelection, true);
+      document.removeEventListener("mouseup", finalizeSelection, true);
+      document.removeEventListener("keyup", finalizeSelection, true);
       document.removeEventListener("dblclick", handlePdfDoubleClick, true);
       document.removeEventListener("pointerdown", clearOnPointerDown, true);
       document.removeEventListener("wheel", handlePdfWheelZoom);
@@ -329,6 +345,7 @@ export function App() {
     setFloatingButton(null);
     activeSelectionRef.current = null;
     const nextPageTexts = new Map<number, string>();
+    const nextPageTextIndexes = new Map<number, PageTextIndex>();
     const stage = document.createElement("div");
     const displayedScale = renderedScaleRef.current;
     const scrollAnchor = {
@@ -340,7 +357,7 @@ export function App() {
     setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
 
     try {
-      await renderPdf(pdf, stage, nextPageTexts, currentRun, renderRunRef, scale, (renderedPages, totalPages) => {
+      await renderPdf(pdf, stage, nextPageTexts, nextPageTextIndexes, currentRun, renderRunRef, scale, (renderedPages, totalPages) => {
         if (renderRunRef.current === currentRun) {
           setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
         }
@@ -352,6 +369,7 @@ export function App() {
         viewer.scrollLeft = Math.max(0, scrollAnchor.left * scaleRatio - viewer.clientWidth / 2);
         viewer.scrollTop = Math.max(0, scrollAnchor.top * scaleRatio - viewer.clientHeight / 2);
         pageTextsRef.current = nextPageTexts;
+        pageTextIndexesRef.current = nextPageTextIndexes;
         renderedScaleRef.current = scale;
         setRenderProgress(null);
       }
@@ -366,7 +384,7 @@ export function App() {
     }
   }
 
-  function updatePdfSelection() {
+  function updatePdfSelection(finalizeNativeSelection: boolean) {
     const viewer = viewerRef.current;
     const selection = window.getSelection();
 
@@ -380,10 +398,8 @@ export function App() {
       return;
     }
 
-    const range = selection.getRangeAt(0);
-    expandSelectionRangeToWordBoundaries(range);
-
-    const rect = firstUsableRect(range);
+    let range = selection.getRangeAt(0);
+    let rect = firstUsableRect(range);
     if (!rect) {
       setFloatingButton(null);
       return;
@@ -391,12 +407,21 @@ export function App() {
 
     const pageNumber = detectCurrentPage(selection, rect, viewer);
     const rawText = normalizeWhitespace(selection.toString());
-    const pageText = pageTextsRef.current.get(pageNumber) ?? "";
-    const text = expandSelectedTextFromPage(rawText, pageText);
+    const textIndex = pageTextIndexesRef.current.get(pageNumber);
+    const pageText = textIndex?.text || pageTextsRef.current.get(pageNumber) || "";
+    const text = normalizeSelectedTextFromPage(rawText, pageText);
     if (text.length < 2 || !hasEnglishText(text)) {
       setFloatingButton(null);
       activeSelectionRef.current = null;
       return;
+    }
+
+    if (finalizeNativeSelection && text !== rawText) {
+      const snappedRange = selectTextInPage(pageNumber, text, pageTextIndexesRef.current);
+      if (snappedRange) {
+        range = snappedRange;
+        rect = firstUsableRect(range) ?? rect;
+      }
     }
 
     const selectionKind = classifySelection(text);
@@ -429,7 +454,7 @@ export function App() {
     if (selectWordAtPoint(event.clientX, event.clientY, viewer)) {
       event.preventDefault();
       event.stopPropagation();
-      window.setTimeout(updatePdfSelection, 0);
+      window.setTimeout(() => updatePdfSelection(true), 0);
     }
   }
 
@@ -586,6 +611,7 @@ async function renderPdf(
   pdf: PDFDocumentProxy,
   viewer: HTMLDivElement,
   pageTexts: Map<number, string>,
+  pageTextIndexes: Map<number, PageTextIndex>,
   runId: number,
   renderRunRef: MutableRefObject<number>,
   scale: number,
@@ -597,7 +623,7 @@ async function renderPdf(
     }
 
     const page = await pdf.getPage(pageNumber);
-    await renderPage(page, pageNumber, viewer, pageTexts, scale);
+    await renderPage(page, pageNumber, viewer, pageTexts, pageTextIndexes, scale);
     onPageRendered(pageNumber, pdf.numPages);
   }
 }
@@ -607,6 +633,7 @@ async function renderPage(
   pageNumber: number,
   viewer: HTMLDivElement,
   pageTexts: Map<number, string>,
+  pageTextIndexes: Map<number, PageTextIndex>,
   scale: number
 ): Promise<void> {
   const viewport = page.getViewport({ scale });
@@ -648,7 +675,6 @@ async function renderPage(
   viewer.append(pageShell);
 
   const textContent = await page.getTextContent();
-  pageTexts.set(pageNumber, textContentToPlainText(textContent));
 
   await page.render({ canvas, canvasContext: context, viewport }).promise;
   const textLayer = new TextLayer({
@@ -657,6 +683,10 @@ async function renderPage(
     viewport
   });
   await textLayer.render();
+
+  const pageTextIndex = buildPageTextIndex(textLayerContainer);
+  pageTexts.set(pageNumber, pageTextIndex.text || textContentToPlainText(textContent));
+  pageTextIndexes.set(pageNumber, pageTextIndex);
 }
 
 function textContentToPlainText(textContent: PdfTextContent): string {
@@ -664,35 +694,37 @@ function textContentToPlainText(textContent: PdfTextContent): string {
   return cleanPdfText(parts.join(" "));
 }
 
-function expandSelectionRangeToWordBoundaries(range: Range): void {
-  if (range.startContainer.nodeType === Node.TEXT_NODE) {
-    const startNode = range.startContainer as Text;
-    let startOffset = range.startOffset;
+function buildPageTextIndex(textLayerContainer: HTMLElement): PageTextIndex {
+  const segments: TextSegment[] = [];
+  let text = "";
+  const spans = Array.from(textLayerContainer.querySelectorAll("span"));
 
-    while (startOffset > 0 && isWordCharacter(startNode.data[startOffset - 1])) {
-      startOffset -= 1;
+  for (const span of spans) {
+    const node = span.firstChild;
+    if (!(node instanceof Text) || !node.data.trim()) {
+      continue;
     }
 
-    if (startOffset !== range.startOffset) {
-      range.setStart(startNode, startOffset);
+    if (text && shouldInsertTextSeparator(text[text.length - 1], node.data[0])) {
+      text += " ";
     }
+
+    const start = text.length;
+    text += node.data;
+    segments.push({
+      start,
+      end: text.length,
+      node
+    });
   }
 
-  if (range.endContainer.nodeType === Node.TEXT_NODE) {
-    const endNode = range.endContainer as Text;
-    let endOffset = range.endOffset;
-
-    while (endOffset < endNode.data.length && isWordCharacter(endNode.data[endOffset])) {
-      endOffset += 1;
-    }
-
-    if (endOffset !== range.endOffset) {
-      range.setEnd(endNode, endOffset);
-    }
-  }
+  return {
+    text,
+    segments
+  };
 }
 
-function expandSelectedTextFromPage(selectedText: string, pageText: string): string {
+function normalizeSelectedTextFromPage(selectedText: string, pageText: string): string {
   const normalizedSelection = normalizeWhitespace(selectedText);
   const index = findSelectionIndex(pageText, normalizedSelection);
 
@@ -702,16 +734,81 @@ function expandSelectedTextFromPage(selectedText: string, pageText: string): str
 
   let start = index;
   let end = index + normalizedSelection.length;
+  const wordCount = countEnglishWords(normalizedSelection);
 
   while (start > 0 && isWordCharacter(pageText[start - 1])) {
     start -= 1;
   }
 
-  while (end < pageText.length && isWordCharacter(pageText[end])) {
-    end += 1;
+  if (end < pageText.length && isWordCharacter(pageText[end])) {
+    if (wordCount <= 1) {
+      while (end < pageText.length && isWordCharacter(pageText[end])) {
+        end += 1;
+      }
+    } else {
+      while (end > start && isWordCharacter(pageText[end - 1])) {
+        end -= 1;
+      }
+    }
   }
 
   return normalizeWhitespace(pageText.slice(start, end));
+}
+
+function selectTextInPage(pageNumber: number, text: string, pageTextIndexes: Map<number, PageTextIndex>): Range | null {
+  const pageTextIndex = pageTextIndexes.get(pageNumber);
+  if (!pageTextIndex) {
+    return null;
+  }
+
+  const index = findSelectionIndex(pageTextIndex.text, text);
+  if (index < 0) {
+    return null;
+  }
+
+  const start = textPositionForIndex(pageTextIndex, index, "start");
+  const end = textPositionForIndex(pageTextIndex, index + text.length, "end");
+  const selection = window.getSelection();
+
+  if (!start || !end || !selection) {
+    return null;
+  }
+
+  const range = document.createRange();
+  range.setStart(start.node, start.offset);
+  range.setEnd(end.node, end.offset);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return range;
+}
+
+function textPositionForIndex(pageTextIndex: PageTextIndex, index: number, bias: "start" | "end"): { node: Text; offset: number } | null {
+  let previous: TextSegment | null = null;
+
+  for (const segment of pageTextIndex.segments) {
+    if (index < segment.start) {
+      if (bias === "end" && previous) {
+        return { node: previous.node, offset: previous.node.data.length };
+      }
+
+      return { node: segment.node, offset: 0 };
+    }
+
+    if (index <= segment.end) {
+      return {
+        node: segment.node,
+        offset: clamp(index - segment.start, 0, segment.node.data.length)
+      };
+    }
+
+    previous = segment;
+  }
+
+  if (previous) {
+    return { node: previous.node, offset: previous.node.data.length };
+  }
+
+  return null;
 }
 
 function extractSentenceContainingSelection(pageText: string, selectedText: string): string {
@@ -818,6 +915,22 @@ function caretRangeFromPoint(clientX: number, clientY: number): Range | null {
 
 function isWordCharacter(value: string | undefined): boolean {
   return Boolean(value && /[A-Za-z0-9'-]/.test(value));
+}
+
+function shouldInsertTextSeparator(previous: string | undefined, current: string | undefined): boolean {
+  if (!previous || !current || /\s/.test(previous) || /\s/.test(current)) {
+    return false;
+  }
+
+  if (/[,.;:!?%)\]}]/.test(current) || /[(\[{]/.test(previous)) {
+    return false;
+  }
+
+  return true;
+}
+
+function countEnglishWords(value: string): number {
+  return value.match(/[A-Za-z0-9]+(?:[-'][A-Za-z0-9]+)*/g)?.length ?? 0;
 }
 
 function selectionBelongsToViewer(selection: Selection, viewer: HTMLElement): boolean {
