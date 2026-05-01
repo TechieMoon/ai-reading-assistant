@@ -10,6 +10,7 @@ import pdfWorkerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 import logoUrl from "../../assets/logo.svg";
 import { answerKindForSelection, classifySelection, cleanPdfText, createSelectionId, hasEnglishText, labelForSelectionKind, normalizeWhitespace } from "../shared/selection";
 import type { AnswerKind, ExplanationResponse, SelectionPayload } from "../shared/types";
+import { MarkdownView } from "./MarkdownView";
 import { clearApiKey, explainSelection, getStoredApiKey, saveApiKey } from "./openaiClient";
 
 GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -29,12 +30,17 @@ interface PdfTextContent {
 
 const PDF_CONTEXT_RADIUS = 800;
 const ADJACENT_PAGE_CONTEXT = 500;
+const DEFAULT_PDF_SCALE = 1.25;
+const MIN_PDF_SCALE = 0.75;
+const MAX_PDF_SCALE = 2.5;
+const PDF_SCALE_STEP = 0.15;
 
 export function App() {
   const [pdfState, setPdfState] = useState<PdfLoadState>("empty");
   const [pdfTitle, setPdfTitle] = useState("PDF를 열어 주세요");
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [renderProgress, setRenderProgress] = useState<string | null>(null);
+  const [pdfScale, setPdfScale] = useState(DEFAULT_PDF_SCALE);
   const [answerState, setAnswerState] = useState<AnswerState>("idle");
   const [selectedText, setSelectedText] = useState("");
   const [answerKind, setAnswerKind] = useState<AnswerKind | null>(null);
@@ -49,6 +55,7 @@ export function App() {
   const pageTextsRef = useRef<Map<number, string>>(new Map());
   const activeSelectionRef = useRef<SelectionPayload | null>(null);
   const pdfDocumentRef = useRef<PDFDocumentProxy | null>(null);
+  const pdfScaleRef = useRef(DEFAULT_PDF_SCALE);
   const renderRunRef = useRef(0);
 
   const loadPdfData = useCallback(async (data: ArrayBuffer, title: string) => {
@@ -82,7 +89,7 @@ export function App() {
       pdfDocumentRef.current = pdf;
       setPdfState("ready");
       setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
-      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef, (renderedPages, totalPages) => {
+      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef, pdfScaleRef.current, (renderedPages, totalPages) => {
         if (renderRunRef.current === currentRun) {
           setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
         }
@@ -128,12 +135,14 @@ export function App() {
     document.addEventListener("mouseup", updateSelection, true);
     document.addEventListener("keyup", updateSelection, true);
     document.addEventListener("pointerdown", clearOnPointerDown, true);
+    document.addEventListener("wheel", handlePdfWheelZoom, { passive: false });
 
     return () => {
       document.removeEventListener("selectionchange", updateSelection);
       document.removeEventListener("mouseup", updateSelection, true);
       document.removeEventListener("keyup", updateSelection, true);
       document.removeEventListener("pointerdown", clearOnPointerDown, true);
+      document.removeEventListener("wheel", handlePdfWheelZoom);
     };
   }, []);
 
@@ -197,6 +206,72 @@ export function App() {
     clearApiKey();
     setApiKeyInput("");
     setHasApiKey(false);
+  }
+
+  function handleZoomOut() {
+    updatePdfScale(pdfScaleRef.current - PDF_SCALE_STEP);
+  }
+
+  function handleZoomIn() {
+    updatePdfScale(pdfScaleRef.current + PDF_SCALE_STEP);
+  }
+
+  function handlePdfWheelZoom(event: WheelEvent) {
+    if (!event.ctrlKey || !viewerRef.current?.contains(event.target as Node)) {
+      return;
+    }
+
+    event.preventDefault();
+    updatePdfScale(pdfScaleRef.current + (event.deltaY < 0 ? PDF_SCALE_STEP : -PDF_SCALE_STEP));
+  }
+
+  function updatePdfScale(nextScale: number) {
+    const normalizedScale = roundScale(clamp(nextScale, MIN_PDF_SCALE, MAX_PDF_SCALE));
+
+    if (Math.abs(normalizedScale - pdfScaleRef.current) < 0.001) {
+      return;
+    }
+
+    pdfScaleRef.current = normalizedScale;
+    setPdfScale(normalizedScale);
+    void rerenderCurrentPdf(normalizedScale);
+  }
+
+  async function rerenderCurrentPdf(scale: number) {
+    const pdf = pdfDocumentRef.current;
+    const viewer = viewerRef.current;
+
+    if (!pdf || !viewer) {
+      return;
+    }
+
+    const currentRun = renderRunRef.current + 1;
+    renderRunRef.current = currentRun;
+    setFloatingButton(null);
+    activeSelectionRef.current = null;
+    pageTextsRef.current.clear();
+    viewer.replaceChildren();
+    setRenderProgress(`PDF를 불러오는 중입니다 0/${pdf.numPages}`);
+
+    try {
+      await renderPdf(pdf, viewer, pageTextsRef.current, currentRun, renderRunRef, scale, (renderedPages, totalPages) => {
+        if (renderRunRef.current === currentRun) {
+          setRenderProgress(renderedPages < totalPages ? `PDF를 불러오는 중입니다 ${renderedPages}/${totalPages}` : null);
+        }
+      });
+
+      if (renderRunRef.current === currentRun) {
+        setRenderProgress(null);
+      }
+    } catch (error) {
+      if (renderRunRef.current === currentRun) {
+        const detail = pdfLoadErrorMessage(error);
+        console.error("PDF rerender failed:", detail);
+        setPdfState("error");
+        setRenderProgress(null);
+        setPdfError(`PDF를 다시 렌더링하지 못했습니다. ${detail}`);
+      }
+    }
   }
 
   function updatePdfSelection() {
@@ -270,6 +345,15 @@ export function App() {
           </div>
           <div className="topbar-actions">
             {renderProgress && <span className="render-status">{renderProgress}</span>}
+            <div className="zoom-controls" aria-label="PDF 확대/축소">
+              <button type="button" onClick={handleZoomOut} disabled={pdfState !== "ready" || pdfScale <= MIN_PDF_SCALE} aria-label="축소">
+                -
+              </button>
+              <span>{Math.round(pdfScale * 100)}%</span>
+              <button type="button" onClick={handleZoomIn} disabled={pdfState !== "ready" || pdfScale >= MAX_PDF_SCALE} aria-label="확대">
+                +
+              </button>
+            </div>
             <button type="button" onClick={() => fileInputRef.current?.click()}>
               PDF 열기
             </button>
@@ -367,7 +451,7 @@ export function App() {
                   다시 설명
                 </button>
               </div>
-              <div>{explanation.explanation}</div>
+              <MarkdownView content={explanation.explanation} />
             </article>
           )}
         </section>
@@ -382,6 +466,7 @@ async function renderPdf(
   pageTexts: Map<number, string>,
   runId: number,
   renderRunRef: MutableRefObject<number>,
+  scale: number,
   onPageRendered: (renderedPages: number, totalPages: number) => void
 ): Promise<void> {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
@@ -390,7 +475,7 @@ async function renderPdf(
     }
 
     const page = await pdf.getPage(pageNumber);
-    await renderPage(page, pageNumber, viewer, pageTexts);
+    await renderPage(page, pageNumber, viewer, pageTexts, scale);
     onPageRendered(pageNumber, pdf.numPages);
   }
 }
@@ -399,9 +484,9 @@ async function renderPage(
   page: PDFPageProxy,
   pageNumber: number,
   viewer: HTMLDivElement,
-  pageTexts: Map<number, string>
+  pageTexts: Map<number, string>,
+  scale: number
 ): Promise<void> {
-  const scale = 1.25;
   const viewport = page.getViewport({ scale });
   const pageShell = document.createElement("section");
   const canvas = document.createElement("canvas");
@@ -416,6 +501,9 @@ async function renderPage(
   pageShell.dataset.pageNumber = String(pageNumber);
   pageShell.style.width = `${viewport.width}px`;
   pageShell.style.height = `${viewport.height}px`;
+  pageShell.style.setProperty("--scale-factor", String(scale));
+  pageShell.style.setProperty("--user-unit", "1");
+  pageShell.style.setProperty("--total-scale-factor", String(scale));
 
   canvas.className = "pdf-canvas";
   canvas.width = Math.floor(viewport.width * window.devicePixelRatio);
@@ -427,6 +515,8 @@ async function renderPage(
   textLayerContainer.className = "textLayer";
   textLayerContainer.style.width = `${viewport.width}px`;
   textLayerContainer.style.height = `${viewport.height}px`;
+  textLayerContainer.style.setProperty("--scale-factor", String(scale));
+  textLayerContainer.style.setProperty("--total-scale-factor", String(scale));
 
   pageShell.append(canvas, textLayerContainer);
   viewer.append(pageShell);
@@ -531,6 +621,10 @@ function titleForAnswerKind(kind: AnswerKind): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function roundScale(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function pdfLoadErrorMessage(error: unknown): string {
