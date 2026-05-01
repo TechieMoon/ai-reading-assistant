@@ -33,7 +33,7 @@ const PDF_CONTEXT_RADIUS = 800;
 const ADJACENT_PAGE_CONTEXT = 500;
 const DEFAULT_PDF_SCALE = 1.25;
 const MIN_PDF_SCALE = 0.75;
-const MAX_PDF_SCALE = 2.5;
+const MAX_PDF_SCALE = 3;
 const PDF_SCALE_STEP = 0.15;
 
 export function App() {
