@@ -40,6 +40,17 @@ interface TextSegment {
   node: Text;
 }
 
+interface SelectionIndexRange {
+  start: number;
+  end: number;
+}
+
+interface NormalizedSelection {
+  text: string;
+  start: number;
+  end: number;
+}
+
 const PDF_CONTEXT_RADIUS = 800;
 const ADJACENT_PAGE_CONTEXT = 500;
 const DEFAULT_PDF_SCALE = 1.25;
@@ -409,15 +420,17 @@ export function App() {
     const rawText = normalizeWhitespace(selection.toString());
     const textIndex = pageTextIndexesRef.current.get(pageNumber);
     const pageText = textIndex?.text || pageTextsRef.current.get(pageNumber) || "";
-    const text = normalizeSelectedTextFromPage(rawText, pageText);
+    const selectedRange = textIndex ? rangeIndexesFromTextLayer(range, textIndex) : null;
+    const normalizedSelection = normalizeSelectedTextFromPage(rawText, pageText, selectedRange);
+    const text = normalizedSelection.text;
     if (text.length < 2 || !hasEnglishText(text)) {
       setFloatingButton(null);
       activeSelectionRef.current = null;
       return;
     }
 
-    if (finalizeNativeSelection && text !== rawText) {
-      const snappedRange = selectTextInPage(pageNumber, text, pageTextIndexesRef.current);
+    if (finalizeNativeSelection && textIndex && normalizedSelection.start >= 0 && normalizedSelection.end > normalizedSelection.start) {
+      const snappedRange = selectTextInPage(pageNumber, normalizedSelection.start, normalizedSelection.end, pageTextIndexesRef.current);
       if (snappedRange) {
         range = snappedRange;
         rect = firstUsableRect(range) ?? rect;
@@ -428,8 +441,8 @@ export function App() {
     const payload: SelectionPayload = {
       id: createSelectionId(),
       selectedText: text,
-      surroundingContext: buildPdfContext(pageNumber, text, pageTextsRef.current),
-      contextSentence: extractSentenceContainingSelection(pageText, text),
+      surroundingContext: buildPdfContext(pageNumber, text, pageTextsRef.current, normalizedSelection.start),
+      contextSentence: extractSentenceContainingSelection(pageText, text, normalizedSelection.start),
       selectionKind,
       pdfTitle,
       pageNumber,
@@ -724,16 +737,20 @@ function buildPageTextIndex(textLayerContainer: HTMLElement): PageTextIndex {
   };
 }
 
-function normalizeSelectedTextFromPage(selectedText: string, pageText: string): string {
+function normalizeSelectedTextFromPage(selectedText: string, pageText: string, selectedRange: SelectionIndexRange | null): NormalizedSelection {
   const normalizedSelection = normalizeWhitespace(selectedText);
-  const index = findSelectionIndex(pageText, normalizedSelection);
+  const index = selectedRange ? selectedRange.start : findSelectionIndex(pageText, normalizedSelection);
 
-  if (index < 0) {
-    return normalizedSelection;
+  if (index < 0 || !normalizedSelection) {
+    return {
+      text: normalizedSelection,
+      start: -1,
+      end: -1
+    };
   }
 
   let start = index;
-  let end = index + normalizedSelection.length;
+  let end = selectedRange ? selectedRange.end : index + normalizedSelection.length;
   const wordCount = countEnglishWords(normalizedSelection);
 
   while (start > 0 && isWordCharacter(pageText[start - 1])) {
@@ -752,22 +769,123 @@ function normalizeSelectedTextFromPage(selectedText: string, pageText: string): 
     }
   }
 
-  return normalizeWhitespace(pageText.slice(start, end));
+  while (start < end && /\s/.test(pageText[start])) {
+    start += 1;
+  }
+
+  while (end > start && /\s/.test(pageText[end - 1])) {
+    end -= 1;
+  }
+
+  return {
+    text: normalizeWhitespace(pageText.slice(start, end)),
+    start,
+    end
+  };
 }
 
-function selectTextInPage(pageNumber: number, text: string, pageTextIndexes: Map<number, PageTextIndex>): Range | null {
+function rangeIndexesFromTextLayer(range: Range, pageTextIndex: PageTextIndex): SelectionIndexRange | null {
+  const start = indexForDomPosition(range.startContainer, range.startOffset, pageTextIndex, "start");
+  const end = indexForDomPosition(range.endContainer, range.endOffset, pageTextIndex, "end");
+
+  if (start === null || end === null || start === end) {
+    return null;
+  }
+
+  return {
+    start: Math.min(start, end),
+    end: Math.max(start, end)
+  };
+}
+
+function indexForDomPosition(node: Node, offset: number, pageTextIndex: PageTextIndex, bias: "start" | "end"): number | null {
+  const position = resolveTextPosition(node, offset, bias);
+  if (!position) {
+    return null;
+  }
+
+  for (const segment of pageTextIndex.segments) {
+    if (segment.node === position.node) {
+      return segment.start + clamp(position.offset, 0, segment.node.data.length);
+    }
+  }
+
+  return null;
+}
+
+function resolveTextPosition(node: Node, offset: number, bias: "start" | "end"): { node: Text; offset: number } | null {
+  if (node instanceof Text) {
+    return {
+      node,
+      offset
+    };
+  }
+
+  if (!(node instanceof Element)) {
+    return null;
+  }
+
+  const childNodes = Array.from(node.childNodes);
+  const child = bias === "start" ? childNodes[offset] ?? childNodes[childNodes.length - 1] : childNodes[offset - 1] ?? childNodes[0];
+  const textNode = bias === "start" ? firstTextDescendant(child) : lastTextDescendant(child);
+
+  if (!textNode) {
+    return null;
+  }
+
+  return {
+    node: textNode,
+    offset: bias === "start" ? 0 : textNode.data.length
+  };
+}
+
+function firstTextDescendant(node: Node | undefined): Text | null {
+  if (!node) {
+    return null;
+  }
+
+  if (node instanceof Text) {
+    return node;
+  }
+
+  for (const child of Array.from(node.childNodes)) {
+    const textNode = firstTextDescendant(child);
+    if (textNode) {
+      return textNode;
+    }
+  }
+
+  return null;
+}
+
+function lastTextDescendant(node: Node | undefined): Text | null {
+  if (!node) {
+    return null;
+  }
+
+  if (node instanceof Text) {
+    return node;
+  }
+
+  const childNodes = Array.from(node.childNodes);
+  for (let index = childNodes.length - 1; index >= 0; index -= 1) {
+    const textNode = lastTextDescendant(childNodes[index]);
+    if (textNode) {
+      return textNode;
+    }
+  }
+
+  return null;
+}
+
+function selectTextInPage(pageNumber: number, startIndex: number, endIndex: number, pageTextIndexes: Map<number, PageTextIndex>): Range | null {
   const pageTextIndex = pageTextIndexes.get(pageNumber);
   if (!pageTextIndex) {
     return null;
   }
 
-  const index = findSelectionIndex(pageTextIndex.text, text);
-  if (index < 0) {
-    return null;
-  }
-
-  const start = textPositionForIndex(pageTextIndex, index, "start");
-  const end = textPositionForIndex(pageTextIndex, index + text.length, "end");
+  const start = textPositionForIndex(pageTextIndex, startIndex, "start");
+  const end = textPositionForIndex(pageTextIndex, endIndex, "end");
   const selection = window.getSelection();
 
   if (!start || !end || !selection) {
@@ -811,9 +929,10 @@ function textPositionForIndex(pageTextIndex: PageTextIndex, index: number, bias:
   return null;
 }
 
-function extractSentenceContainingSelection(pageText: string, selectedText: string): string {
+function extractSentenceContainingSelection(pageText: string, selectedText: string, selectionStartIndex?: number): string {
   const normalizedSelection = normalizeWhitespace(selectedText);
-  const index = findSelectionIndex(pageText, normalizedSelection);
+  const index =
+    typeof selectionStartIndex === "number" && selectionStartIndex >= 0 ? selectionStartIndex : findSelectionIndex(pageText, normalizedSelection);
 
   if (index < 0) {
     return "";
@@ -967,10 +1086,11 @@ function detectCurrentPage(selection: Selection, rect: DOMRect, viewer: HTMLElem
   return Number(pageByRect?.dataset.pageNumber ?? 1);
 }
 
-function buildPdfContext(pageNumber: number, selectedText: string, pageTexts: Map<number, string>): string {
+function buildPdfContext(pageNumber: number, selectedText: string, pageTexts: Map<number, string>, selectionStartIndex?: number): string {
   const pageText = pageTexts.get(pageNumber) ?? "";
   const normalizedSelection = normalizeWhitespace(selectedText);
-  const index = findSelectionIndex(pageText, normalizedSelection);
+  const index =
+    typeof selectionStartIndex === "number" && selectionStartIndex >= 0 ? selectionStartIndex : findSelectionIndex(pageText, normalizedSelection);
   const currentPageContext =
     index >= 0
       ? pageText.slice(Math.max(0, index - PDF_CONTEXT_RADIUS), Math.min(pageText.length, index + normalizedSelection.length + PDF_CONTEXT_RADIUS))
